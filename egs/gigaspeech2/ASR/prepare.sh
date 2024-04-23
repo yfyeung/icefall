@@ -92,8 +92,33 @@ if [ $stage -le 5 ] && [ $stop_stage -ge 5 ]; then
         --num-workers 20 \
         --batch-duration 1000 \
         --num-splits $num_splits \
-	--start 150 \
+	--start 100 \
 	--stop -1
     fi
   done
+fi
+
+if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
+  log "Stage 6: Prepare char based lang"
+  lang_char_dir=data/lang_char
+  mkdir -p $lang_char_dir
+
+  cp $lang_phone_dir/transcript_words.txt $lang_char_dir/transcript_words.txt
+
+  cat $dl_dir/aishell/data_aishell/transcript/aishell_transcript_v0.8.txt |
+  cut -d " " -f 2- > $lang_char_dir/text
+
+  (echo '<eps> 0'; echo '!SIL 1'; echo '<SPOKEN_NOISE> 2'; echo '<UNK> 3';) \
+    > $lang_char_dir/words.txt
+
+  cat $lang_char_dir/text | sed 's/ /\n/g' | sort -u | sed '/^$/d' \
+     | awk '{print $1" "NR+3}' >> $lang_char_dir/words.txt
+
+  num_lines=$(< $lang_char_dir/words.txt wc -l)
+  (echo "#0 $num_lines"; echo "<s> $(($num_lines + 1))"; echo "</s> $(($num_lines + 2))";) \
+    >> $lang_char_dir/words.txt
+
+  if [ ! -f $lang_char_dir/L_disambig.pt ]; then
+    ./local/prepare_char.py --lang-dir $lang_char_dir
+  fi
 fi

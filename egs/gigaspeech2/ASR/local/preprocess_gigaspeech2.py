@@ -70,18 +70,6 @@ def normalize_text(
         text = re.sub("\u0038", "\u0E58", text)
         text = re.sub("\u0039", "\u0E59", text)
 
-        # Currency symbols mapping
-        text = re.sub("\u0024", "ดอลลาร์", text)  # $
-        text = re.sub("\u00A3", "ปอนด์", text)  # £
-        text = re.sub("\u00A5", "หยวน", text)  # ¥
-        text = re.sub("\u20AC", "ยูโร", text)  # €
-        text = re.sub("\u0E3F", "บาท", text)  # ฿
-
-        # Temperature/Angle symbols mapping
-        text = re.sub("\u00B0\u0043", "องศาเซลเซียส", text)  # °C
-        text = re.sub("\u00B0\u0046", "องศาฟาเรนไฮต์", text)  # °F
-        text = re.sub("\u00B0", "องศา", text)  # °
-
         # Remove blank symbols
         text = re.sub(r"\s", "", text)
 
@@ -122,7 +110,10 @@ def preprocess_gigaspeech2(args):
             continue
 
         for sup in m["supervisions"]:
-            sup.text = normalize_text(sup.text, args.lang)
+            old_text = sup.text
+            new_text = normalize_text(old_text, args.lang)
+            if old_text != new_text:
+                logging.info(f"raw: {old_text}\nnormalize: {new_text}\n")
 
         logging.info(f"Processing {partition}")
         cut_set = CutSet.from_manifests(
