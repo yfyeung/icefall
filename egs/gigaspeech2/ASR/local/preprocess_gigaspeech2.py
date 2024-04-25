@@ -70,6 +70,14 @@ def normalize_text(
         text = re.sub("\u0038", "\u0E58", text)
         text = re.sub("\u0039", "\u0E59", text)
 
+        # Currency symbol mapping
+        text = re.sub("\u0E3F", "\u0E1A\u0E32\u0E17", text)  # baht
+
+        # Remove punctuation
+        # text = re.sub("\u0E2F", "", text)  # Thanthakhat
+        text = re.sub("\u0E4F", "", text)  # Paiyannoi
+        text = re.sub("\u0E5A", "", text)  # Angkhan Pilok
+
         # Remove blank symbols
         text = re.sub(r"\s", "", text)
 
@@ -113,7 +121,8 @@ def preprocess_gigaspeech2(args):
             old_text = sup.text
             new_text = normalize_text(old_text, args.lang)
             if old_text != new_text:
-                logging.info(f"raw: {old_text}\nnormalize: {new_text}\n")
+                logging.info(f"\nraw: {old_text}\nnormalize: {new_text}")
+            sup.text = new_text
 
         logging.info(f"Processing {partition}")
         cut_set = CutSet.from_manifests(

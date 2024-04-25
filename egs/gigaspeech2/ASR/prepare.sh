@@ -6,9 +6,9 @@ export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 set -eou pipefail
 
 nj=16
-# run step 1 to step 5 by default
+# run step 1 to step 6 by default
 stage=1
-stop_stage=5
+stop_stage=6
 
 # We assume dl_dir (download dir) contains the following directories and files.
 #
@@ -92,8 +92,7 @@ if [ $stage -le 5 ] && [ $stop_stage -ge 5 ]; then
         --num-workers 20 \
         --batch-duration 1000 \
         --num-splits $num_splits \
-	--start 100 \
-	--stop -1
+	--start 180
     fi
   done
 fi
@@ -103,20 +102,53 @@ if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
   lang_char_dir=data/lang_char
   mkdir -p $lang_char_dir
 
-  cp $lang_phone_dir/transcript_words.txt $lang_char_dir/transcript_words.txt
+  if [ ! -f $lang_char_dir/text ]; then
+    for subset in $subsets; do
+      if [[ $subset != "test" ]]; then
+        log "Generate transcript from subset: $subset"
+        gunzip -c data/fbank/gigaspeech2_cuts_${subset}_raw.jsonl.gz | awk -F '"' '{print $30}' \
+          >> $lang_char_dir/text
+      fi
+      if [[ $subset == "test" ]]; then
+        log "Generate transcript from subset: $subset"
+        gunzip -c data/fbank/gigaspeech2_cuts_${subset}.jsonl.gz | awk -F '"' '{print $30}' \
+          >> $lang_char_dir/text
+      fi
+    done
+  fi
+ 
+  if [ ! -f $lang_char_dir/transcript_words.txt ]; then
+    python3 local/generate_words_from_transcript.py \
+      --input-file $lang_char_dir/text \
+      --output-file $lang_char_dir/transcript_words.txt
+  fi
 
-  cat $dl_dir/aishell/data_aishell/transcript/aishell_transcript_v0.8.txt |
-  cut -d " " -f 2- > $lang_char_dir/text
-
-  (echo '<eps> 0'; echo '!SIL 1'; echo '<SPOKEN_NOISE> 2'; echo '<UNK> 3';) \
-    > $lang_char_dir/words.txt
-
-  cat $lang_char_dir/text | sed 's/ /\n/g' | sort -u | sed '/^$/d' \
-     | awk '{print $1" "NR+3}' >> $lang_char_dir/words.txt
-
-  num_lines=$(< $lang_char_dir/words.txt wc -l)
-  (echo "#0 $num_lines"; echo "<s> $(($num_lines + 1))"; echo "</s> $(($num_lines + 2))";) \
-    >> $lang_char_dir/words.txt
+  if [ ! -f $lang_char_dir/words.txt ]; then
+    cat $lang_char_dir/transcript_words.txt | sed 's/ /\n/g' \
+      | sort -u | sed '/^$/d' > $lang_char_dir/words.txt
+    (echo '!SIL'; echo '<SPOKEN_NOISE>'; echo '<UNK>'; ) |
+      cat - $lang_char_dir/words.txt | sort | uniq | awk '
+      BEGIN {
+        print "<eps> 0";
+      }
+      {
+        if ($1 == "<s>") {
+          print "<s> is in the vocabulary!" | "cat 1>&2"
+          exit 1;
+        }
+        if ($1 == "</s>") {
+          print "</s> is in the vocabulary!" | "cat 1>&2"
+          exit 1;
+        }
+        printf("%s %d\n", $1, NR);
+      }
+      END {
+        printf("#0 %d\n", NR+1);
+        printf("<s> %d\n", NR+2);
+        printf("</s> %d\n", NR+3);
+      }' > $lang_char_dir/words || exit 1;
+    mv $lang_char_dir/words $lang_char_dir/words.txt
+  fi
 
   if [ ! -f $lang_char_dir/L_disambig.pt ]; then
     ./local/prepare_char.py --lang-dir $lang_char_dir
