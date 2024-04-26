@@ -59,7 +59,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import k2
 import optim
-import sentencepiece as spm
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
@@ -80,6 +79,7 @@ from torch.utils.tensorboard import SummaryWriter
 from zipformer import Zipformer2
 
 from icefall import diagnostics
+from icefall.char_graph_compiler import CharCtcTrainingGraphCompiler
 from icefall.checkpoint import load_checkpoint, remove_checkpoints
 from icefall.checkpoint import save_checkpoint as save_checkpoint_impl
 from icefall.checkpoint import (
@@ -90,6 +90,7 @@ from icefall.dist import cleanup_dist, setup_dist
 from icefall.env import get_env_info
 from icefall.err import raise_grad_scale_is_too_small_error
 from icefall.hooks import register_inf_check_hooks
+from icefall.lexicon import Lexicon
 from icefall.utils import (
     AttributeDict,
     MetricsTracker,
@@ -321,10 +322,13 @@ def get_parser():
     )
 
     parser.add_argument(
-        "--bpe-model",
+        "--lang-dir",
         type=str,
-        default="data/lang_bpe_500/bpe.model",
-        help="Path to the BPE model",
+        default="data/lang_char",
+        help="""The lang dir
+        It contains language related input files such as
+        "lexicon.txt"
+        """,
     )
 
     parser.add_argument(
@@ -358,7 +362,7 @@ def get_parser():
     parser.add_argument(
         "--context-size",
         type=int,
-        default=2,
+        default=1,
         help="The context size in the decoder. 1 means bigram; " "2 means tri-gram",
     )
 
@@ -526,7 +530,7 @@ def get_params() -> AttributeDict:
             "batch_idx_train": 0,
             "log_interval": 50,
             "reset_interval": 200,
-            "valid_interval": 3000,  # For the 100h subset, use 800
+            "valid_interval": 3000,
             # parameters for zipformer
             "feature_dim": 80,
             "subsampling_factor": 4,  # not passed in, this is fixed.
@@ -752,7 +756,7 @@ def save_checkpoint(
 def compute_loss(
     params: AttributeDict,
     model: Union[nn.Module, DDP],
-    sp: spm.SentencePieceProcessor,
+    graph_compiler: CharCtcTrainingGraphCompiler,
     batch: dict,
     is_training: bool,
 ) -> Tuple[Tensor, MetricsTracker]:
@@ -787,11 +791,8 @@ def compute_loss(
     warm_step = params.warm_step
 
     texts = batch["supervisions"]["text"]
-    import pdb
-
-    pdb.set_trace()
-    y = sp.encode(texts, out_type=int)
-    y = k2.RaggedTensor(y)
+    y = graph_compiler.texts_to_ids(texts)
+    y = k2.RaggedTensor(y).to(device)
 
     with torch.set_grad_enabled(is_training):
         simple_loss, pruned_loss, ctc_loss = model(
@@ -845,7 +846,7 @@ def compute_loss(
 def compute_validation_loss(
     params: AttributeDict,
     model: Union[nn.Module, DDP],
-    sp: spm.SentencePieceProcessor,
+    graph_compiler: CharCtcTrainingGraphCompiler,
     valid_dl: torch.utils.data.DataLoader,
     world_size: int = 1,
 ) -> MetricsTracker:
@@ -858,7 +859,7 @@ def compute_validation_loss(
         loss, loss_info = compute_loss(
             params=params,
             model=model,
-            sp=sp,
+            graph_compiler=graph_compiler,
             batch=batch,
             is_training=False,
         )
@@ -881,7 +882,7 @@ def train_one_epoch(
     model: Union[nn.Module, DDP],
     optimizer: torch.optim.Optimizer,
     scheduler: LRSchedulerType,
-    sp: spm.SentencePieceProcessor,
+    graph_compiler: CharCtcTrainingGraphCompiler,
     train_dl: torch.utils.data.DataLoader,
     valid_dl: torch.utils.data.DataLoader,
     scaler: GradScaler,
@@ -952,7 +953,7 @@ def train_one_epoch(
                 loss, loss_info = compute_loss(
                     params=params,
                     model=model,
-                    sp=sp,
+                    graph_compiler=graph_compiler,
                     batch=batch,
                     is_training=True,
                 )
@@ -970,7 +971,7 @@ def train_one_epoch(
         except Exception as e:
             logging.info(f"Caught exception: {e}.")
             save_bad_model()
-            display_and_save_batch(batch, params=params, sp=sp)
+            display_and_save_batch(batch, params=params, graph_compiler=graph_compiler)
             raise
 
         if params.print_diagnostics and batch_idx == 5:
@@ -1057,7 +1058,7 @@ def train_one_epoch(
             valid_info = compute_validation_loss(
                 params=params,
                 model=model,
-                sp=sp,
+                graph_compiler=graph_compiler,
                 valid_dl=valid_dl,
                 world_size=world_size,
             )
@@ -1110,12 +1111,14 @@ def run(rank, world_size, args):
         device = torch.device("cuda", rank)
     logging.info(f"Device: {device}")
 
-    sp = spm.SentencePieceProcessor()
-    sp.load(params.bpe_model)
+    lexicon = Lexicon(params.lang_dir)
+    graph_compiler = CharCtcTrainingGraphCompiler(
+        lexicon=lexicon,
+        device=device,
+    )
 
-    # <blk> is defined in local/train_bpe_model.py
-    params.blank_id = sp.piece_to_id("<blk>")
-    params.vocab_size = sp.get_piece_size()
+    params.blank_id = lexicon.token_table["<blk>"]
+    params.vocab_size = max(lexicon.tokens) + 1
 
     if not params.use_transducer:
         params.ctc_loss_scale = 1.0
@@ -1178,37 +1181,17 @@ def run(rank, world_size, args):
     train_cuts = gigaspeech2.train_cuts()
 
     def remove_short_and_long_utt(c: Cut):
-        # Keep only utterances with duration between 1 second and 20 seconds
+        # Keep only utterances with duration between 1 second and 30 seconds
         #
-        # Caution: There is a reason to select 20.0 here. Please see
+        # Caution: There is a reason to select 30.0 here. Please see
         # ../local/display_manifest_statistics.py
         #
         # You should use ../local/display_manifest_statistics.py to get
         # an utterance duration distribution for your dataset to select
         # the threshold
         if c.duration < 1.0 or c.duration > 30.0:
-            # logging.warning(
-            #     f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
-            # )
-            return False
-
-        # In pruned RNN-T, we require that T >= S
-        # where T is the number of feature frames after subsampling
-        # and S is the number of tokens in the utterance
-
-        # In ./zipformer.py, the conv module uses the following expression
-        # for subsampling
-        T = ((c.num_frames - 7) // 2 + 1) // 2
-        tokens = sp.encode(c.supervisions[0].text, out_type=str)
-
-        if T < len(tokens):
             logging.warning(
-                f"Exclude cut with ID {c.id} from training. "
-                f"Number of frames (before subsampling): {c.num_frames}. "
-                f"Number of frames (after subsampling): {T}. "
-                f"Text: {c.supervisions[0].text}. "
-                f"Tokens: {tokens}. "
-                f"Number of tokens: {len(tokens)}"
+                f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
             )
             return False
 
@@ -1228,14 +1211,16 @@ def run(rank, world_size, args):
     )
 
     valid_cuts = gigaspeech2.test_cuts()
+    valid_cuts = valid_cuts.filter(remove_short_and_long_utt)
     valid_dl = gigaspeech2.valid_dataloaders(valid_cuts)
+
 
     if 0 and not params.print_diagnostics:
         scan_pessimistic_batches_for_oom(
             model=model,
             train_dl=train_dl,
             optimizer=optimizer,
-            sp=sp,
+            graph_compiler=graph_compiler,
             params=params,
         )
 
@@ -1260,7 +1245,7 @@ def run(rank, world_size, args):
             model_avg=model_avg,
             optimizer=optimizer,
             scheduler=scheduler,
-            sp=sp,
+            graph_compiler=graph_compiler,
             train_dl=train_dl,
             valid_dl=valid_dl,
             scaler=scaler,
@@ -1294,7 +1279,7 @@ def run(rank, world_size, args):
 def display_and_save_batch(
     batch: dict,
     params: AttributeDict,
-    sp: spm.SentencePieceProcessor,
+    graph_compiler: CharCtcTrainingGraphCompiler,
 ) -> None:
     """Display the batch statistics and save the batch into disk.
 
@@ -1304,8 +1289,8 @@ def display_and_save_batch(
         for the content in it.
       params:
         Parameters for training. See :func:`get_params`.
-      sp:
-        The BPE model.
+      graph_compiler:
+        The compiler to encode texts to ids.
     """
     from lhotse.utils import uuid4
 
@@ -1318,7 +1303,8 @@ def display_and_save_batch(
 
     logging.info(f"features shape: {features.shape}")
 
-    y = sp.encode(supervisions["text"], out_type=int)
+    texts = supervisions["text"]
+    y = graph_compiler.texts_to_ids(texts)
     num_tokens = sum(len(i) for i in y)
     logging.info(f"num tokens: {num_tokens}")
 
@@ -1327,7 +1313,7 @@ def scan_pessimistic_batches_for_oom(
     model: Union[nn.Module, DDP],
     train_dl: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
-    sp: spm.SentencePieceProcessor,
+    graph_compiler: CharCtcTrainingGraphCompiler,
     params: AttributeDict,
 ):
     from lhotse.dataset import find_pessimistic_batches
@@ -1343,7 +1329,7 @@ def scan_pessimistic_batches_for_oom(
                 loss, _ = compute_loss(
                     params=params,
                     model=model,
-                    sp=sp,
+                    graph_compiler=graph_compiler,
                     batch=batch,
                     is_training=True,
                 )
@@ -1358,7 +1344,7 @@ def scan_pessimistic_batches_for_oom(
                     f"Failing criterion: {criterion} "
                     f"(={crit_values[criterion]}) ..."
                 )
-            display_and_save_batch(batch, params=params, sp=sp)
+            display_and_save_batch(batch, params=params, graph_compiler=graph_compiler)
             raise
         logging.info(
             f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
@@ -1369,6 +1355,7 @@ def main():
     parser = get_parser()
     GigaSpeech2AsrDataModule.add_arguments(parser)
     args = parser.parse_args()
+    args.lang_dir = Path(args.lang_dir)
     args.exp_dir = Path(args.exp_dir)
 
     world_size = args.world_size
