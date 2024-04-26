@@ -362,7 +362,7 @@ def get_parser():
     parser.add_argument(
         "--context-size",
         type=int,
-        default=1,
+        default=2,
         help="The context size in the decoder. 1 means bigram; " "2 means tri-gram",
     )
 
@@ -1211,7 +1211,6 @@ def run(rank, world_size, args):
     )
 
     valid_cuts = gigaspeech2.test_cuts()
-    valid_cuts = valid_cuts.filter(remove_short_and_long_utt)
     valid_dl = gigaspeech2.valid_dataloaders(valid_cuts)
 
 
