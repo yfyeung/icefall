@@ -91,8 +91,7 @@ if [ $stage -le 5 ] && [ $stop_stage -ge 5 ]; then
 	--dataset $subset \
         --num-workers 20 \
         --batch-duration 1000 \
-        --num-splits $num_splits \
-	--start 180
+        --num-splits $num_splits
     fi
   done
 fi
