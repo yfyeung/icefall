@@ -18,6 +18,9 @@
 
 import argparse
 import logging
+import os
+import lhotse
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -40,7 +43,7 @@ class _SeedWorkers:
         fix_random_seed(self.seed + worker_id)
 
 
-class LibriSpeechDataModule:
+class Gigaspeech2DataModule:
     """
     DataModule for SSL experiments.
     It assumes there is always one train and valid dataloader,
@@ -65,12 +68,6 @@ class LibriSpeechDataModule:
             description="These options are used for the preparation of "
             "PyTorch DataLoaders from Lhotse CutSet's -- they control the "
             "effective batch sizes, sampling strategies.",
-        )
-        group.add_argument(
-            "--full-libri",
-            type=str2bool,
-            default=True,
-            help="When enabled use 960h LibriSpeech. " "Otherwise, use 100h subset.",
         )
 
         group.add_argument(
@@ -142,7 +139,6 @@ class LibriSpeechDataModule:
         random_crop: bool = True,
         pad_audio: bool = False,
         num_classes: list = [504],
-        do_normalize: bool = True,
         sampler_state_dict: Optional[Dict[str, Any]] = None,
     ) -> DataLoader:
         """
@@ -160,7 +156,6 @@ class LibriSpeechDataModule:
             random_crop=random_crop,
             pad_audio=pad_audio,
             num_classes=num_classes,
-            do_normalize=do_normalize,
         )
 
         if self.args.bucketing_sampler:
@@ -210,7 +205,6 @@ class LibriSpeechDataModule:
         random_crop: bool = True,
         pad_audio: bool = False,
         num_classes: list = [504],
-        do_normalize: bool = True,
     ) -> DataLoader:
         logging.info("About to create dev dataset")
         validate = HubertDataset(
@@ -220,7 +214,6 @@ class LibriSpeechDataModule:
             random_crop=random_crop,
             pad_audio=pad_audio,
             num_classes=num_classes,
-            do_normalize=do_normalize,
         )
         valid_sampler = DynamicBucketingSampler(
             cuts_valid,
@@ -246,7 +239,6 @@ class LibriSpeechDataModule:
         random_crop: bool = True,
         pad_audio: bool = False,
         num_classes: list = [504],
-        do_normalize: bool = True,
     ) -> DataLoader:
         logging.debug("About to create test dataset")
         test = HubertDataset(
@@ -255,7 +247,6 @@ class LibriSpeechDataModule:
             random_crop=random_crop,
             pad_audio=pad_audio,
             num_classes=num_classes,
-            do_normalize=do_normalize,
         )
         sampler = DynamicBucketingSampler(
             cuts,
@@ -272,70 +263,79 @@ class LibriSpeechDataModule:
         return test_dl
 
     @lru_cache()
-    def train_clean_100_cuts(self) -> CutSet:
-        logging.info("About to get train-clean-100 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-clean-100.jsonl.gz"
-        )
-
-    @lru_cache()
-    def train_clean_360_cuts(self) -> CutSet:
-        logging.info("About to get train-clean-360 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-clean-360.jsonl.gz"
-        )
-
-    @lru_cache()
-    def train_other_500_cuts(self) -> CutSet:
-        logging.info("About to get train-other-500 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-other-500.jsonl.gz"
-        )
-
-    @lru_cache()
-    def train_all_shuf_cuts(self) -> CutSet:
+    def train_cuts(self) -> CutSet:
+        logging.info(f"About to get train cuts")
+        split_lis = os.listdir(self.args.manifest_dir)
+        split_lis = [item for item in split_lis if os.path.isdir(os.path.join(self.args.manifest_dir, item)) and item != "IndonesianFairyTales_split_Z_split"]
+        cut_lis = []
+        for split in split_lis:
+            sub_split_list = os.listdir(os.path.join(self.args.manifest_dir, split))
+            pattern = re.compile("gigaspeech2_cuts_"+split[:-6]+r".([0-9]+).jsonl.gz")
+            sub_split_list = [f"{self.args.manifest_dir}/{split}/{item}" for item in sub_split_list if pattern.match(item)]
+            cut_lis.extend(sub_split_list)
+        sorted_filenames = sorted(cut_lis)
+        # sorted_filenames = [f[1] for f in idx_filenames]
         logging.info(
-            "About to get the shuffled train-clean-100, \
-            train-clean-360 and train-other-500 cuts"
-        )
-        train_clean_100_cuts = self.train_clean_100_cuts()
-        train_clean_360_cuts = self.train_clean_360_cuts()
-        train_other_500_cuts = self.train_other_500_cuts()
-        return CutSet.mux(
-            train_clean_100_cuts,
-            train_clean_360_cuts,
-            train_other_500_cuts,
-            weights=[
-                28539,  # len(train_clean_100_cuts)
-                104014,  # len(train_clean_360_cuts)
-                148688,  # len(train_other_500_cuts)
-            ],
+            f"Loading GigaSpeech2 {len(sorted_filenames)} splits in lazy mode"
         )
 
-    @lru_cache()
-    def dev_clean_cuts(self) -> CutSet:
-        logging.info("About to get dev-clean cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-clean.jsonl.gz"
+        cuts_train = lhotse.combine(
+            lhotse.load_manifest_lazy(p) for p in sorted_filenames
         )
+        return cuts_train
 
     @lru_cache()
-    def dev_other_cuts(self) -> CutSet:
-        logging.info("About to get dev-other cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-other.jsonl.gz"
+    def dev_cuts(self) -> CutSet:
+        logging.info(f"About to get dev cuts")
+        cut_lis = []
+        split = "IndonesianFairyTales_split_Z_split"
+        sub_split_list = os.listdir(os.path.join(self.args.manifest_dir, split))
+        pattern = re.compile("gigaspeech2_cuts_"+split[:-6]+r".([0-9]+).jsonl.gz")
+        sub_split_list = [f"{self.args.manifest_dir}/{split}/{item}" for item in sub_split_list if pattern.match(item)]
+        cut_lis.extend(sub_split_list)
+        sorted_filenames = sorted(cut_lis)
+        # sorted_filenames = [f[1] for f in idx_filenames]
+        logging.info(
+            f"Loading GigaSpeech {len(sorted_filenames)} splits in lazy mode"
         )
 
+        cuts_dev = lhotse.combine(
+            lhotse.load_manifest_lazy(p) for p in sorted_filenames
+        )
+        return cuts_dev
+
     @lru_cache()
-    def test_clean_cuts(self) -> CutSet:
+    def test_cuts(self) -> CutSet:
         logging.info("About to get test-clean cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-clean.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech2_cuts_test.jsonl.gz"
         )
 
     @lru_cache()
-    def test_other_cuts(self) -> CutSet:
-        logging.info("About to get test-other cuts")
+    def train_vi_cuts(self) -> CutSet:
+        logging.info(f"About to get train cuts")
+        split_lis = os.listdir(self.args.manifest_dir)
+        split_lis = [item for item in split_lis if os.path.isdir(os.path.join(self.args.manifest_dir, item))]
+        cut_lis = []
+        for split in split_lis:
+            sub_split_list = os.listdir(os.path.join(self.args.manifest_dir, split))
+            pattern = re.compile("gigaspeech2_cuts_"+split[:-6]+r".([0-9]+).jsonl.gz")
+            sub_split_list = [f"{self.args.manifest_dir}/{split}/{item}" for item in sub_split_list if pattern.match(item)]
+            cut_lis.extend(sub_split_list)
+        sorted_filenames = sorted(cut_lis)
+        # sorted_filenames = [f[1] for f in idx_filenames]
+        logging.info(
+            f"Loading GigaSpeech2 {len(sorted_filenames)} splits in lazy mode"
+        )
+
+        cuts_train = lhotse.combine(
+            lhotse.load_manifest_lazy(p) for p in sorted_filenames
+        )
+        return cuts_train
+
+    @lru_cache()
+    def dev_vi_cuts(self) -> CutSet:
+        logging.info(f"About to get dev cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-other.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech2_cuts_dev.jsonl.gz"
         )

@@ -57,7 +57,7 @@ from lhotse.cut import Cut
 from lhotse.dataset.sampling.base import CutSampler
 from lhotse.utils import fix_random_seed
 from optim import Eden, ScaledAdam
-from ssl_datamodule import LibriSpeechDataModule
+from ssl_datamodule import Gigaspeech2DataModule
 from torch import Tensor
 from torch.cuda.amp import GradScaler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -638,6 +638,9 @@ def get_params() -> AttributeDict:
             "log_interval": 50,
             "reset_interval": 200,
             "valid_interval": 3000,  # For the 100h subset, use 800
+
+            # zipformer parameter
+            "feature_dim": 80,
             "env_info": get_env_info(),
         }
     )
@@ -802,7 +805,7 @@ def compute_loss(
 
     with torch.set_grad_enabled(is_training):
         loss, num_masked_tokens, logging_output = model(
-            source=audio, target_list=[kmeans], padding_mask=padding_mask
+            source=features, target_list=[kmeans], padding_mask=padding_mask
         )
 
     assert loss.requires_grad == is_training
@@ -1148,12 +1151,10 @@ def run(rank, world_size, args):
     if params.inf_check:
         register_inf_check_hooks(model)
 
-    librispeech = LibriSpeechDataModule(args)
+    gigaspeech2 = Gigaspeech2DataModule(args)
 
     train_cuts = (
-        librispeech.train_all_shuf_cuts()
-        if params.full_libri
-        else librispeech.train_clean_100_cuts()
+        gigaspeech2.train_vi_cuts()
     )
 
     def remove_short_and_long_utt(c: Cut):
@@ -1185,7 +1186,7 @@ def run(rank, world_size, args):
     else:
         sampler_state_dict = None
 
-    train_dl = librispeech.train_dataloaders(
+    train_dl = gigaspeech2.train_dataloaders(
         train_cuts,
         max_sample_size=params.max_sample_size,
         sample_rate=params.sample_rate,
@@ -1194,11 +1195,11 @@ def run(rank, world_size, args):
         sampler_state_dict=sampler_state_dict,
     )
 
-    valid_cuts = librispeech.dev_clean_cuts()
-    # valid_cuts += librispeech.dev_other_cuts()
+    valid_cuts = gigaspeech2.dev_vi_cuts()
+    # valid_cuts += gigaspeech2.dev_other_cuts()
     valid_cuts = valid_cuts.filter(remove_short_and_long_utt)
 
-    valid_dl = librispeech.valid_dataloaders(
+    valid_dl = gigaspeech2.valid_dataloaders(
         valid_cuts,
         max_sample_size=params.max_sample_size,
         sample_rate=params.sample_rate,
@@ -1332,7 +1333,7 @@ def scan_pessimistic_batches_for_oom(
 
 def main():
     parser = get_parser()
-    LibriSpeechDataModule.add_arguments(parser)
+    Gigaspeech2DataModule.add_arguments(parser)
     args = parser.parse_args()
     args.exp_dir = Path(args.exp_dir)
 

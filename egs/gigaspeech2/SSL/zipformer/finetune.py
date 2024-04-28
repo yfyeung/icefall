@@ -57,7 +57,7 @@ import sentencepiece as spm
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from asr_datamodule import LibriSpeechAsrDataModule
+from asr_datamodule import Gigaspeech2AsrDataModule
 from decoder import Decoder
 from hubert_ce import HubertModel
 from joiner import Joiner
@@ -1350,7 +1350,7 @@ def run(rank, world_size, args):
     if params.inf_check:
         register_inf_check_hooks(model)
 
-    librispeech = LibriSpeechAsrDataModule(args)
+    librispeech = Gigaspeech2AsrDataModule(args)
 
     train_cuts = (
         librispeech.train_all_shuf_cuts()
@@ -1533,7 +1533,7 @@ def scan_pessimistic_batches_for_oom(
 
 def main():
     parser = get_parser()
-    LibriSpeechAsrDataModule.add_arguments(parser)
+    Gigaspeech2AsrDataModule.add_arguments(parser)
     args = parser.parse_args()
     args.exp_dir = Path(args.exp_dir)
 
