@@ -8,7 +8,7 @@ set -eou pipefail
 nj=16
 # run step 1 to step 6 by default
 stage=1
-stop_stage=6
+stop_stage=7
 
 # We assume dl_dir (download dir) contains the following directories and files.
 #
@@ -151,5 +151,19 @@ if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
 
   if [ ! -f $lang_char_dir/L_disambig.pt ]; then
     ./local/prepare_char.py --lang-dir $lang_char_dir
+  fi
+fi
+
+if [ $stage -le 7 ] && [ $stop_stage -ge 7 ]; then
+  log "Stage 7: Prepare BPE based lang"
+  vocab_size=500
+  lang_dir=data/lang_bpe_${vocab_size}
+  mkdir -p $lang_dir
+  cp data/lang_char/text $lang_dir
+  if [ ! -f $lang_dir/bpe.model ]; then
+    ./local/train_bpe_model.py \
+      --lang-dir $lang_dir \
+      --vocab-size $vocab_size \
+      --transcript $lang_dir/text
   fi
 fi

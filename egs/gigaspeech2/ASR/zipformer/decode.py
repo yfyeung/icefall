@@ -754,7 +754,7 @@ def main():
     args.return_cuts = True
     gigaspeech2 = GigaSpeech2AsrDataModule(args)
 
-    test_cuts = gigaspeech2.test_cv_cuts()
+    test_cuts = gigaspeech2.test_th_cuts()
     test_dl = gigaspeech2.test_dataloaders(test_cuts)
 
     test_sets = ["test_th"]
