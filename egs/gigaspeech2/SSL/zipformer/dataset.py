@@ -89,10 +89,16 @@ class HubertDataset(torch.utils.data.Dataset):
         )
 
         kmeans = [cut.custom["kmeans"] for cut in cuts]
-        kmeans = [
-            torch.tensor([int(item) for item in label.split()], dtype=torch.int64)
-            for label in kmeans
-        ]
+        if type(kmeans[0]) == list:
+            kmeans = [
+                torch.tensor([int(item) for item in label], dtype=torch.int64)
+                for label in kmeans
+            ]
+        else:
+            kmeans = [
+                torch.tensor([int(item) for item in label.split()], dtype=torch.int64)
+                for label in kmeans
+            ]
         kmeans, kmeans_lens = self.collater_frm_label(kmeans, feature_size, feature_starts)
 
         return {
