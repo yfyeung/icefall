@@ -424,3 +424,10 @@ class GigaSpeech2AsrDataModule:
         return load_manifest_lazy(
             self.args.manifest_dir / "gigaspeech2_cuts_test_th.jsonl.gz"
         )
+
+    @lru_cache()
+    def test_cv_cuts(self) -> CutSet:
+        logging.info("About to get commonvoice test cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "cv-th_cuts_test.jsonl.gz"
+        )

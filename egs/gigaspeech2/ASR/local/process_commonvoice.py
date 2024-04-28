@@ -21,7 +21,8 @@ import re
 import unicodedata
 from pathlib import Path
 
-from lhotse import CutSet, SupervisionSegment
+import torch
+from lhotse import CutSet, KaldifeatFbank, KaldifeatFbankConfig
 from lhotse.recipes.utils import read_manifests_if_cached
 
 from icefall.utils import str2bool
@@ -79,7 +80,7 @@ def normalize_text(
         text = re.sub("\u0E5A", "", text)  # Angkhan Pilok
 
         # Remove non-Thai symbols
-        text = re.sub(r'[^\u0E00-\u0E7F]', "", text)
+        text = re.sub(r"[^\u0E00-\u0E7F]", "", text)
 
         # Remove blank symbols
         text = re.sub(r"\s", "", text)
@@ -94,6 +95,19 @@ def preprocess_commonvoice(args):
     src_dir = Path("data/manifests")
     output_dir = Path("data/fbank")
     output_dir.mkdir(exist_ok=True)
+
+    # number of workers in dataloader
+    num_workers = 20
+
+    # number of seconds in a batch
+    batch_duration = 1000
+
+    device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda", 0)
+    extractor = KaldifeatFbank(KaldifeatFbankConfig(device=device))
+
+    logging.info(f"device: {device}")
 
     dataset_parts = args.dataset.strip().split(" ", -1)
 
@@ -115,8 +129,8 @@ def preprocess_commonvoice(args):
 
     for partition, m in manifests.items():
         logging.info(f"Processing {partition}")
-        raw_cuts_path = output_dir / f"cv-{args.lang}_cuts_{partition}_raw.jsonl.gz"
-        if raw_cuts_path.is_file():
+        cuts_path = output_dir / f"cv-{args.lang}_cuts_{partition}.jsonl.gz"
+        if cuts_path.is_file():
             logging.info(f"{partition} already exists - skipping")
             continue
 
@@ -131,10 +145,24 @@ def preprocess_commonvoice(args):
         cut_set = CutSet.from_manifests(
             recordings=m["recordings"],
             supervisions=m["supervisions"],
+        ).resample(16000)
+
+        logging.info("Computing features")
+
+        cut_set = cut_set.compute_and_store_features_batch(
+            extractor=extractor,
+            storage_path=f"{output_dir}/cv-{args.lang}_feats_{partition}",
+            num_workers=num_workers,
+            batch_duration=batch_duration,
+            overwrite=True,
+        )
+        cut_set = cut_set.trim_to_supervisions(
+            keep_overlapping=False, min_duration=None
         )
 
-        logging.info(f"Saving to {raw_cuts_path}")
-        cut_set.to_file(raw_cuts_path)
+        logging.info(f"Saving to {cuts_path}")
+        cut_set.to_file(cuts_path)
+        logging.info(f"Saved to {cuts_path}")
 
 
 def main():
