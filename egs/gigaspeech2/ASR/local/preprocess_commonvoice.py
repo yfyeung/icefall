@@ -57,7 +57,7 @@ def normalize_text(
     text = re.sub(r"\([^\)]*\)", " ", text)
 
     # Language-related normalization
-    if lang == "Thai":
+    if lang == "th":
         # Digit mapping
         text = re.sub("\u0030", "\u0E50", text)
         text = re.sub("\u0031", "\u0E51", text)
@@ -78,6 +78,9 @@ def normalize_text(
         text = re.sub("\u0E4F", "", text)  # Paiyannoi
         text = re.sub("\u0E5A", "", text)  # Angkhan Pilok
 
+        # Remove non-Thai symbols
+        text = re.sub(r'[^\u0E00-\u0E7F]', "", text)
+
         # Remove blank symbols
         text = re.sub(r"\s", "", text)
 
@@ -87,7 +90,7 @@ def normalize_text(
     return text
 
 
-def preprocess_gigaspeech2(args):
+def preprocess_commonvoice(args):
     src_dir = Path("data/manifests")
     output_dir = Path("data/fbank")
     output_dir.mkdir(exist_ok=True)
@@ -98,7 +101,7 @@ def preprocess_gigaspeech2(args):
     manifests = read_manifests_if_cached(
         dataset_parts=dataset_parts,
         output_dir=src_dir,
-        prefix="gigaspeech2",
+        prefix=f"cv-{args.lang}",
         suffix="jsonl.gz",
     )
     assert manifests is not None
@@ -112,7 +115,7 @@ def preprocess_gigaspeech2(args):
 
     for partition, m in manifests.items():
         logging.info(f"Processing {partition}")
-        raw_cuts_path = output_dir / f"gigaspeech2_cuts_{partition}_raw.jsonl.gz"
+        raw_cuts_path = output_dir / f"cv-{args.lang}_cuts_{partition}_raw.jsonl.gz"
         if raw_cuts_path.is_file():
             logging.info(f"{partition} already exists - skipping")
             continue
@@ -139,7 +142,7 @@ def main():
     logging.basicConfig(format=formatter, level=logging.INFO)
 
     args = get_args()
-    preprocess_gigaspeech2(args)
+    preprocess_commonvoice(args)
 
 
 if __name__ == "__main__":

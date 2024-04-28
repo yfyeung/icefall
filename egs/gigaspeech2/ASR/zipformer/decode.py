@@ -757,7 +757,7 @@ def main():
     test_cuts = gigaspeech2.test_th_cuts()
     test_dl = gigaspeech2.test_dataloaders(test_cuts)
 
-    test_sets = ["test"]
+    test_sets = ["test_th"]
     test_dls = [test_dl]
 
     for test_set, test_dl in zip(test_sets, test_dls):
