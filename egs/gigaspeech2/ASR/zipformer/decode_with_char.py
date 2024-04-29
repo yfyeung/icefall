@@ -116,8 +116,7 @@ from beam_search import (
     greedy_search_batch,
     modified_beam_search,
 )
-from lhotse.cut import Cut
-from train import add_model_arguments, get_model, get_params
+from train_with_char import add_model_arguments, get_model, get_params
 
 from icefall.char_graph_compiler import CharCtcTrainingGraphCompiler
 from icefall.checkpoint import (
