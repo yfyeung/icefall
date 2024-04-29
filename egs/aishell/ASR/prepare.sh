@@ -8,7 +8,7 @@ set -eou pipefail
 nj=15
 stage=-1
 stop_stage=11
-perturb_speed=true
+perturb_speed=false
 
 # We assume dl_dir (download dir) contains the following
 # directories and files. If not, they will be downloaded
