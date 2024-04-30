@@ -28,7 +28,6 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
   --num-epochs 12 \
   --start-epoch 1 \
   --exp-dir zipformer/exp \
-  --training-subset L
   --lr-epochs 1.5 \
   --max-duration 350
 
@@ -40,7 +39,6 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
   --start-epoch 1 \
   --use-fp16 1 \
   --exp-dir zipformer/exp \
-  --training-subset L \
   --lr-epochs 1.5 \
   --max-duration 750
 
