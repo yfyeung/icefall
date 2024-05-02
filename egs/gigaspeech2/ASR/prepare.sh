@@ -97,7 +97,20 @@ if [ $stage -le 5 ] && [ $stop_stage -ge 5 ]; then
 fi
 
 if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
-  log "Stage 6: Prepare char based lang"
+  log "Stage 6: Combine cutset for train set"
+  for subset in $subsets; do
+    if [[ $subset != "test" ]]; then
+      if [ ! -f data/fbank/gigaspeech2_cuts_${subset}.jsonl.gz ]; then
+        split_dir=data/fbank/${subset}_split
+        pieces=$(find $split_dir -name "gigaspeech2_cuts_${subset}.*.jsonl.gz")
+        lhotse combine $pieces data/fbank/gigaspeech2_cuts_${subset}.jsonl.gz
+      fi
+    fi
+  done
+fi
+
+if [ $stage -le 7 ] && [ $stop_stage -ge 7 ]; then
+  log "Stage 7: Prepare char based lang"
   lang_char_dir=data/lang_char
   mkdir -p $lang_char_dir
 
@@ -154,8 +167,8 @@ if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
   fi
 fi
 
-if [ $stage -le 7 ] && [ $stop_stage -ge 7 ]; then
-  log "Stage 7: Prepare BPE based lang"
+if [ $stage -le 8 ] && [ $stop_stage -ge 8 ]; then
+  log "Stage 8: Prepare BPE based lang"
   vocab_size=500
   lang_dir=data/lang_bpe_${vocab_size}
   mkdir -p $lang_dir
