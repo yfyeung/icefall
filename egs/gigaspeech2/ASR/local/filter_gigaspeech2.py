@@ -19,6 +19,7 @@ import argparse
 import logging
 from pathlib import Path
 
+import jsonlines
 from jiwer import cer
 from lhotse import CutSet, SupervisionSegment
 from lhotse.recipes.utils import read_manifests_if_cached
@@ -35,6 +36,12 @@ def get_args():
     )
 
     parser.add_argument(
+        "--cuts-file",
+        type=str,
+        required=True,
+    )
+
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.1,
@@ -44,38 +51,57 @@ def get_args():
 
 
 def filter_gigaspeech2(args):
-    in_out_dir = Path("data/fbank")
-
     with open(args.recogs_file) as f:
         lines = f.read().splitlines()
         lines = iter(lines)
 
     tot_cnt = 0
     val_cnt = 0
+    val_ids = []
     while True:
         try:
             ref_id, ref = next(lines).split("\t")
             hyp_id, hyp = next(lines).split("\t")
             assert ref_id == hyp_id, f"{ref_id}, {hyp_id}"
 
-            ref = ref.replace("ref=[", "").replace("]", "").replace("'", "").replace(",", "").replace(" ", "")
-            hyp = hyp.replace("hyp=[", "").replace("]", "").replace("'", "").replace(",", "").replace(" ", "")
+            ref = (
+                ref.replace("ref=[", "")
+                .replace("]", "")
+                .replace("'", "")
+                .replace(",", "")
+                .replace(" ", "")
+            )
+            hyp = (
+                hyp.replace("hyp=[", "")
+                .replace("]", "")
+                .replace("'", "")
+                .replace(",", "")
+                .replace(" ", "")
+            )
             score = cer(ref, hyp)
 
             tot_cnt += 1
             if score <= args.threshold:
+                val_ids.append(ref_id)
                 val_cnt += 1
-            if tot_cnt > 20:
-                break
-            print(score)
-            print(ref)
-            print(hyp)
         except StopIteration:
             break
 
+    val_rate = val_cnt / tot_cnt
     logging.info(
-        f"total cuts: {tot_cnt}, filtered cuts: {tot_cnt - val_cnt}, filtered rate: {1 - val_cnt / tot_cnt}"
+        f"total cuts: {tot_cnt}, filtered cuts: {tot_cnt - val_cnt}, filtered rate: {1 - val_rate}"
     )
+
+    with open("valid_list", "w") as f:
+        for val_id in val_ids:
+            f.write(val_id + "\n")
+
+    with jsonlines.open(args.cuts_file) as reader, jsonlines.open(
+        args.cuts_file.replace(".jsonl.gz", f"_{val_rate}.jsonl.gz"), "w"
+    ) as writer:
+        for line in reader:
+            if line["id"] in val_ids:
+                writer.write(line)
 
 
 def main():

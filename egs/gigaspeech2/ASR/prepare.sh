@@ -101,6 +101,7 @@ if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
   for subset in $subsets; do
     if [[ $subset != "test" ]]; then
       if [ ! -f data/fbank/gigaspeech2_cuts_${subset}.jsonl.gz ]; then
+        log "Combine cutset for subset: $subset"
         split_dir=data/fbank/${subset}_split
         pieces=$(find $split_dir -name "gigaspeech2_cuts_${subset}.*.jsonl.gz")
         lhotse combine $pieces data/fbank/gigaspeech2_cuts_${subset}.jsonl.gz

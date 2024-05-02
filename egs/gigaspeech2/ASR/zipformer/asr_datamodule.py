@@ -394,21 +394,8 @@ class GigaSpeech2AsrDataModule:
     @lru_cache()
     def train_cuts(self) -> CutSet:
         logging.info("About to get train thairathonline cuts")
-        filenames = glob.glob(
-            f"{self.args.manifest_dir}/thairathonline_split/gigaspeech2_cuts_thairathonline.*.jsonl.gz"
-        )
-        pattern = re.compile(r"gigaspeech2_cuts_thairathonline.([0-9]+).jsonl.gz")
-        idx_filenames = ((int(pattern.search(f).group(1)), f) for f in filenames)
-        idx_filenames = sorted(idx_filenames, key=lambda x: x[0])
-        sorted_filenames = [f[1] for f in idx_filenames]
-        logging.info(f"Loading GigaSpeech2 {len(sorted_filenames)} splits in lazy mode")
-
-        return lhotse.combine(lhotse.load_manifest_lazy(p) for p in sorted_filenames)
-
-    @lru_cache()
-    def train_all_shuf_cuts(self) -> CutSet:
         return load_manifest_lazy(
-            self.args.manifest_dir / "gigaspeech2_cuts_train-all-shuf.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech2_cuts_thairathonline.jsonl.gz"
         )
 
     @lru_cache()
