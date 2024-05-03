@@ -395,7 +395,7 @@ class GigaSpeech2AsrDataModule:
     def train_cuts(self) -> CutSet:
         logging.info("About to get train thairathonline cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "gigaspeech2_cuts_thairathonline.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech2_cuts_thairathonline_0.668.jsonl.gz"
         )
 
     @lru_cache()

@@ -1,5 +1,5 @@
-for ((epoch=17; epoch<=17; epoch++)); do
-  for ((avg=16; avg<=$epoch-1; avg++)); do
+for ((epoch=12; epoch<=12; epoch++)); do
+  for ((avg=2; avg<=$epoch-1; avg++)); do
   ./zipformer/decode_with_bpe.py \
     --epoch $epoch \
     --avg $avg \

@@ -62,6 +62,10 @@ def filter_gigaspeech2(args):
         try:
             ref_id, ref = next(lines).split("\t")
             hyp_id, hyp = next(lines).split("\t")
+
+            ref_id = ref_id.replace(":", "")
+            hyp_id = hyp_id.replace(":", "")
+
             assert ref_id == hyp_id, f"{ref_id}, {hyp_id}"
 
             ref = (
@@ -92,16 +96,14 @@ def filter_gigaspeech2(args):
         f"total cuts: {tot_cnt}, filtered cuts: {tot_cnt - val_cnt}, filtered rate: {1 - val_rate}"
     )
 
-    with open("valid_list", "w") as f:
-        for val_id in val_ids:
-            f.write(val_id + "\n")
-
+    val_ids.sort()
     with jsonlines.open(args.cuts_file) as reader, jsonlines.open(
-        args.cuts_file.replace(".jsonl.gz", f"_{val_rate}.jsonl.gz"), "w"
+        args.cuts_file.replace(".jsonl", f"_{val_rate:.3f}.jsonl"), "w"
     ) as writer:
-        for line in reader:
-            if line["id"] in val_ids:
+        for line in tqdm(reader):
+            if line["id"] in val_ids[:20]:
                 writer.write(line)
+                val_ids.remove(line["id"])
 
 
 def main():
