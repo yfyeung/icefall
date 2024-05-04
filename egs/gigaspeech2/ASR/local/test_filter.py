@@ -111,7 +111,7 @@ def filter_gigaspeech2(args):
                 cnt_1 += 1
         except StopIteration:
             break
-     
+
     for i in range(1, 11):
         val_cnt = eval(f"cnt_{i}")
         val_rate = val_cnt / tot_cnt

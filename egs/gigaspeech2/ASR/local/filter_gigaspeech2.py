@@ -23,6 +23,7 @@ import jsonlines
 from jiwer import cer
 from lhotse import CutSet, SupervisionSegment
 from lhotse.recipes.utils import read_manifests_if_cached
+from tqdm import tqdm
 
 from icefall.utils import str2bool
 
@@ -44,7 +45,7 @@ def get_args():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0.1,
+        default=0.2,
     )
 
     return parser.parse_args()
