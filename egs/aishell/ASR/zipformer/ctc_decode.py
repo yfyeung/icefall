@@ -108,8 +108,9 @@ from icefall.lexicon import Lexicon
 from icefall.utils import (
     AttributeDict,
     get_texts,
+    parse_fsa_timestamps_and_texts,
     setup_logger,
-    store_transcripts,
+    store_transcripts_and_timestamps,
     str2bool,
     write_error_stats,
 )
@@ -382,18 +383,16 @@ def decode_one_batch(
         best_path = one_best_decoding(
             lattice=lattice, use_double_scores=params.use_double_scores
         )
-        # Note: `best_path.aux_labels` contains token IDs, not word IDs
-        # since we are using H, not HLG here.
-        #
-        # token_ids is a lit-of-list of IDs
-        token_ids = get_texts(best_path)
-
-        # hyps is a list of str, e.g., ['xxx yyy zzz', ...]
-        hyps = [[token_table[idx] for idx in token_id] for token_id in token_ids]
+        timestamps, hyps = parse_fsa_timestamps_and_texts(
+            best_paths=best_path,
+            token_table=token_table,
+            subsampling_factor=params.subsampling_factor,
+            frame_shift_ms=params.frame_shift_ms,
+        )
 
         # hyps is a list of list of str, e.g., [['xxx', 'yyy', 'zzz'], ... ]
         key = "ctc-decoding"
-        return {key: hyps}
+        return {key: (hyps, timestamps)}
 
     if params.decoding_method == "nbest-oracle":
         # Note: You can also pass rescored lattices to it.
@@ -529,11 +528,13 @@ def decode_dataset(
             G=G,
         )
 
-        for name, hyps in hyps_dict.items():
+        for name, (hyps, timestamps_hyps) in hyps_dict.items():
             this_batch = []
             assert len(hyps) == len(texts)
-            for cut_id, hyp_words, ref_text in zip(cut_ids, hyps, texts):
-                this_batch.append((cut_id, ref_words, hyp_words))
+            for cut_id, hyp_words, ref_words, hyp_time in zip(
+                cut_ids, hyps, texts, timestamps_hyps
+            ):
+                this_batch.append((cut_id, ref_words, hyp_words, hyp_time))
 
             results[name].extend(this_batch)
 
@@ -557,7 +558,9 @@ def save_results(
             params.res_dir / f"recogs-{test_set_name}-{key}-{params.suffix}.txt"
         )
         results = sorted(results)
-        store_transcripts(filename=recog_path, texts=results, char_level=True)
+        store_transcripts_and_timestamps(
+            filename=recog_path, texts=results, char_level=True
+        )
         logging.info(f"The transcripts are stored in {recog_path}")
 
         # The following prints out WERs, per-word error statistics and aligned
@@ -657,7 +660,7 @@ def main():
         HLG = None
         H = k2.ctc_topo(
             max_token=max_token_id,
-            modified=False,
+            modified=True,
             device=device,
         )
     else:
