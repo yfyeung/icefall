@@ -2074,6 +2074,83 @@ def parse_bpe_timestamps_and_texts(
     return utt_index_pairs, utt_words
 
 
+def parse_char_timestamps_and_texts(
+    best_paths: k2.Fsa, token_table: k2.SymbolTable
+) -> Tuple[List[Tuple[int, int]], List[List[str]]]:
+    """Parse timestamps (frame indexes) and texts.
+
+    Args:
+      best_paths:
+        A k2.Fsa with best_paths.arcs.num_axes() == 3, i.e.
+        containing multiple FSAs, which is expected to be the result
+        of k2.shortest_path (otherwise the returned values won't
+        be meaningful). Its attributes `labels` and `aux_labels`
+        are both BPE tokens.
+      token_table:
+        The token symbol table.
+
+    Returns:
+      utt_index_pairs:
+        A list of pair list. utt_index_pairs[i] is a list of
+        (start-frame-index, end-frame-index) pairs for each word in
+        utterance-i.
+      utt_words:
+        A list of str list. utt_words[i] is a word list of utterence-i.
+    """
+    shape = best_paths.arcs.shape().remove_axis(1)
+
+    # labels: [utt][arcs]
+    labels = k2.RaggedTensor(shape, best_paths.labels.contiguous())
+    # remove -1's.
+    labels = labels.remove_values_eq(-1)
+    labels = labels.tolist()
+
+    # aux_labels: [utt][arcs]
+    aux_labels = k2.RaggedTensor(shape, best_paths.aux_labels.contiguous())
+
+    # remove -1's.
+    all_aux_labels = aux_labels.remove_values_eq(-1)
+    # len(all_aux_labels[i]) is equal to the number of frames
+    all_aux_labels = all_aux_labels.tolist()
+
+    # remove 0's and -1's.
+    out_aux_labels = aux_labels.remove_values_leq(0)
+    out_aux_labels = out_aux_labels.tolist()
+
+    utt_index_pairs = []
+    utt_words = []
+    for i in range(len(labels)):
+        label = labels[i]
+        all_aux_label = all_aux_labels[i]
+        index_pairs = []
+        start = -1
+        end = -1
+        for arc in range(len(label)):
+            if label[arc] != 0:
+                if all_aux_label[arc] != 0:
+                    if start != -1 and end != -1:
+                        index_pairs.append((start, end))
+                        start = -1
+                        end = -1
+                    start = arc
+                end = arc
+            else:
+                if start != -1 and end != -1:
+                    index_pairs.append((start, end))
+                    start = -1
+                    end = -1
+        if start != -1 and end != -1:
+            index_pairs.append((start, end))
+
+        words = [token_table[idx] for idx in out_aux_labels[i]]
+        assert len(index_pairs) == len(words), (len(index_pairs), len(words))
+
+        utt_index_pairs.append(index_pairs)
+        utt_words.append(words)
+
+    return utt_index_pairs, utt_words
+
+
 def parse_timestamps_and_texts(
     best_paths: k2.Fsa, word_table: k2.SymbolTable
 ) -> Tuple[List[Tuple[int, int]], List[List[str]]]:
@@ -2146,6 +2223,7 @@ def parse_timestamps_and_texts(
 def parse_fsa_timestamps_and_texts(
     best_paths: k2.Fsa,
     sp: Optional[spm.SentencePieceProcessor] = None,
+    token_table: Optional[k2.SymbolTable] = None,
     word_table: Optional[k2.SymbolTable] = None,
     subsampling_factor: int = 4,
     frame_shift_ms: float = 10,
@@ -2166,6 +2244,8 @@ def parse_fsa_timestamps_and_texts(
         be meaningful).
       sp:
         The BPE model.
+      token_table:
+        The token symbol table.
       word_table:
         The word symbol table.
       subsampling_factor:
@@ -2183,11 +2263,23 @@ def parse_fsa_timestamps_and_texts(
     """
     if sp is not None:
         assert word_table is None, "word_table is not needed if sp is provided."
+        assert token_table is None, "token_table is not needed if sp is provided."
         utt_index_pairs, utt_words = parse_bpe_timestamps_and_texts(
             best_paths=best_paths, sp=sp
         )
+    elif token_table is not None:
+        assert sp is None, "sp is not needed if token_table is provided."
+        assert (
+            word_table is None
+        ), "word_table is not needed if token_table is provided."
+        utt_index_pairs, utt_words = parse_char_timestamps_and_texts(
+            best_paths=best_paths, token_table=token_table
+        )
     elif word_table is not None:
         assert sp is None, "sp is not needed if word_table is provided."
+        assert (
+            token_table is None
+        ), "token_table is not needed if word_table is provided."
         utt_index_pairs, utt_words = parse_timestamps_and_texts(
             best_paths=best_paths, word_table=word_table
         )

@@ -112,7 +112,6 @@ from icefall.utils import (
     setup_logger,
     store_transcripts_and_timestamps,
     str2bool,
-    write_error_stats,
 )
 
 LOG_EPS = math.log(1e-10)
@@ -534,7 +533,7 @@ def decode_dataset(
             for cut_id, hyp_words, ref_words, hyp_time in zip(
                 cut_ids, hyps, texts, timestamps_hyps
             ):
-                this_batch.append((cut_id, ref_words, hyp_words, hyp_time))
+                this_batch.append((cut_id, ref_words, hyp_words, hyp_time, hyp_time))
 
             results[name].extend(this_batch)
 
@@ -559,42 +558,9 @@ def save_results(
         )
         results = sorted(results)
         store_transcripts_and_timestamps(
-            filename=recog_path, texts=results, char_level=True
+            filename=recog_path, texts=results
         )
         logging.info(f"The transcripts are stored in {recog_path}")
-
-        # The following prints out WERs, per-word error statistics and aligned
-        # ref/hyp pairs.
-        errs_filename = (
-            params.res_dir / f"errs-{test_set_name}-{key}-{params.suffix}.txt"
-        )
-        with open(errs_filename, "w") as f:
-            wer = write_error_stats(
-                f,
-                f"{test_set_name}-{key}",
-                results,
-                enable_log=True,
-                compute_CER=True,
-            )
-            test_set_wers[key] = wer
-
-        logging.info("Wrote detailed error stats to {}".format(errs_filename))
-
-    test_set_wers = sorted(test_set_wers.items(), key=lambda x: x[1])
-    errs_info = (
-        params.res_dir / f"wer-summary-{test_set_name}-{key}-{params.suffix}.txt"
-    )
-    with open(errs_info, "w") as f:
-        print("settings\tWER", file=f)
-        for key, val in test_set_wers:
-            print("{}\t{}".format(key, val), file=f)
-
-    s = "\nFor {}, WER of different settings are:\n".format(test_set_name)
-    note = "\tbest for {}".format(test_set_name)
-    for key, val in test_set_wers:
-        s += "{}\t{}{}\n".format(key, val, note)
-        note = ""
-    logging.info(s)
 
 
 @torch.no_grad()
@@ -819,16 +785,22 @@ def main():
             )
         return T > 0
 
-    dev_cuts = aishell.valid_cuts()
-    dev_cuts = dev_cuts.filter(remove_short_utt)
-    dev_dl = aishell.valid_dataloaders(dev_cuts)
+    train_cuts = aishell.train_cuts()
+    train_cuts = train_cuts.filter(remove_short_utt)
+    train_dl = aishell.valid_dataloaders(train_cuts)
 
-    test_cuts = aishell.test_cuts()
-    test_cuts = test_cuts.filter(remove_short_utt)
-    test_dl = aishell.test_dataloaders(test_cuts)
+    # dev_cuts = aishell.valid_cuts()
+    # dev_cuts = dev_cuts.filter(remove_short_utt)
+    # dev_dl = aishell.valid_dataloaders(dev_cuts)
 
-    test_sets = ["dev", "test"]
-    test_dls = [dev_dl, test_dl]
+    # test_cuts = aishell.test_cuts()
+    # test_cuts = test_cuts.filter(remove_short_utt)
+    # test_dl = aishell.test_dataloaders(test_cuts)
+ 
+    # test_sets = ["dev", "test"]
+    # test_dls = [dev_dl, test_dl]
+    test_sets = ["train"]
+    test_dls = [train_dl]
 
     for test_set, test_dl in zip(test_sets, test_dls):
         results_dict = decode_dataset(
