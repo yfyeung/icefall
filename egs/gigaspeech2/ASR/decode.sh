@@ -1,6 +1,6 @@
 for ((epoch=30; epoch<=30; epoch++)); do
-  for ((avg=15; avg<=15; avg++)); do
-  ./zipformer/decode_with_bpe.py \
+  for ((avg=27; avg<=27; avg++)); do
+  ./zipformer/decode_with_bpe4.py \
     --epoch $epoch \
     --avg $avg \
     --exp-dir ./zipformer/exp \

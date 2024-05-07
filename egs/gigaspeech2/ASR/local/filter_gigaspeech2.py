@@ -43,6 +43,11 @@ def get_args():
     )
 
     parser.add_argument(
+        "--valids-file",
+        type=str,
+    )
+
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.2,
@@ -51,7 +56,7 @@ def get_args():
     return parser.parse_args()
 
 
-def filter_gigaspeech2(args):
+def get_valids(args):
     with open(args.recogs_file) as f:
         lines = f.read().splitlines()
         lines = iter(lines)
@@ -97,12 +102,20 @@ def filter_gigaspeech2(args):
         f"total cuts: {tot_cnt}, filtered cuts: {tot_cnt - val_cnt}, filtered rate: {1 - val_rate}"
     )
 
-    val_ids.sort()
+    with open("valids", "w") as f:
+        for val_id in val_ids:
+            f.write(val_id + "\n")
+
+
+def get_valjsonl(args):
+    with open(args.valids_file) as f:
+        val_ids = f.read().splitlines()
+
     with jsonlines.open(args.cuts_file) as reader, jsonlines.open(
-        args.cuts_file.replace(".jsonl", f"_{val_rate:.3f}.jsonl"), "w"
+        args.cuts_file.replace(".jsonl", f"_threshold{args.threshold}.jsonl"), "w"
     ) as writer:
         for line in tqdm(reader):
-            if line["id"] in val_ids[:20]:
+            if line["id"] in val_ids[:10]:
                 writer.write(line)
                 val_ids.remove(line["id"])
 
@@ -112,7 +125,11 @@ def main():
     logging.basicConfig(format=formatter, level=logging.INFO)
 
     args = get_args()
-    filter_gigaspeech2(args)
+
+    if args.valids_file is None:
+        get_valids(args)
+    else:
+        get_valjsonl(args)
 
 
 if __name__ == "__main__":
