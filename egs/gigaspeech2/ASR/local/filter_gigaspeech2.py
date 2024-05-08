@@ -92,7 +92,7 @@ def get_valids(args):
 
             tot_cnt += 1
             if score <= args.threshold:
-                val_ids.append(ref_id)
+                val_ids.append((ref_id, hyp))
                 val_cnt += 1
         except StopIteration:
             break
@@ -104,20 +104,26 @@ def get_valids(args):
 
     with open("valids", "w") as f:
         for val_id in val_ids:
-            f.write(val_id + "\n")
+            f.write(val_id[0] + "\t" + val_id[1] + "\n")
 
 
 def get_valjsonl(args):
     with open(args.valids_file) as f:
-        val_ids = f.read().splitlines()
+        lines = f.read().splitlines()
+
+    val_ids = {}
+    for line in lines:
+        import pdb; pdb.set_trace()
+        val_id, text = line.split("\t")
+        val_ids[val_id] = text
 
     with jsonlines.open(args.cuts_file) as reader, jsonlines.open(
         args.cuts_file.replace(".jsonl", f"_threshold{args.threshold}.jsonl"), "w"
     ) as writer:
         for line in tqdm(reader):
-            if line["id"] in val_ids[:10]:
+            if line["id"] in val_ids:
+                line["supervisions"][0]["text"] = val_ids[line["id"]]
                 writer.write(line)
-                val_ids.remove(line["id"])
 
 
 def main():
