@@ -241,13 +241,14 @@ class HubertModel(nn.Module):
             out_channels=_to_int_tuple(cfg.encoder_dim)[0],
             dropout=ScheduledFloat((0.0, 0.3), (20000.0, 0.1)),
         )
-        feature_ds_rate = 2 # TODO: this is from Conv2dSubsampling, I'm not sure if this is right
+        self.feature_ds_rate = 2 # TODO: this is from Conv2dSubsampling, I'm not sure if this is right
         self.feat2tar_ratio = (
-            cfg.label_rate * feature_ds_rate / cfg.sample_rate
+            cfg.label_rate * self.feature_ds_rate / cfg.sample_rate
         )  # TODO feature_ds_rate 320
         encoder_input_dim = _to_int_tuple(cfg.encoder_dim)[0]
         encoder_output_dim = max(_to_int_tuple(cfg.encoder_dim))
 
+        self.mask_before_cnn = cfg.mask_before_cnn
         self.mask_prob = cfg.mask_prob
         self.mask_selection = cfg.mask_selection
         self.mask_other = cfg.mask_other
@@ -365,6 +366,26 @@ class HubertModel(nn.Module):
         target_list = [t[:, target_inds.long()] for t in target_list]
         return features, target_list
 
+    def forward_targets_and_mask(
+        self,
+        features: torch.Tensor,
+        target_list: List[torch.Tensor],
+        mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Trim features to ensure labels exist and then get aligned labels
+        feat_tsz = features.size(2)
+        targ_tsz = min([t.size(1) for t in target_list])
+        # assert mask.shape[1] == targ_tsz
+        if self.feat2tar_ratio * feat_tsz > targ_tsz:
+            feat_tsz = int(targ_tsz / self.feat2tar_ratio)
+            features = features[..., :feat_tsz]
+        target_inds = torch.arange(feat_tsz).float() * self.feat2tar_ratio
+        target_list = [t[:, target_inds.long()] for t in target_list]
+        mask_inds = torch.arange(feat_tsz).float() * self.feature_ds_rate
+        mask = mask[:, mask_inds.long()]
+        
+        return features, target_list, mask
+
     def forward_padding_mask(
         self,
         features: torch.Tensor,
@@ -391,35 +412,57 @@ class HubertModel(nn.Module):
             x_lens = (~padding_mask).sum(dim=-1)
         else:
             x_lens = torch.ones((source.shape[0], ), device = source.device)*source.shape[1]
-        # print(x_lens)
-        # print(target_list.shape)
-        features, _ = self.forward_features(source, x_lens)
-        if target_list is not None:
-            features, target_list = self.forward_targets(features, target_list)
+        if self.mask_before_cnn:
+            if mask:
+                x, mask_indices = self.apply_mask(source, padding_mask, target_list)
+            else:
+                x = features
+                mask_indices = None
 
-        features_pen = features.float().pow(2).mean()
+            features, _ = self.forward_features(source, x_lens)
+            if target_list is not None:
+                features, target_list, mask_indices = self.forward_targets_and_mask(features, target_list, mask_indices)
 
-        features = features.transpose(1, 2)
-        features = self.layer_norm(features)
-        unmasked_features = features.clone()
+            features_pen = features.float().pow(2).mean()
 
-        if padding_mask is not None:
-            padding_mask = self.forward_padding_mask(features, padding_mask)
+            features = features.transpose(1, 2)
+            features = self.layer_norm(features)
+            unmasked_features = features.clone()
 
-        features = self.dropout_input(features)
-        unmasked_features = self.dropout_features(unmasked_features)
+            if padding_mask is not None:
+                padding_mask = self.forward_padding_mask(features, padding_mask)
 
-        if mask:
-            x, mask_indices = self.apply_mask(features, padding_mask, target_list)
+            features = self.dropout_input(features)
+            unmasked_features = self.dropout_features(unmasked_features)
         else:
-            x = features
-            mask_indices = None
+            features, _ = self.forward_features(source, x_lens)
+            if target_list is not None:
+                features, target_list = self.forward_targets(features, target_list)
+
+            features_pen = features.float().pow(2).mean()
+
+            features = features.transpose(1, 2)
+            features = self.layer_norm(features)
+            unmasked_features = features.clone()
+
+            if padding_mask is not None:
+                padding_mask = self.forward_padding_mask(features, padding_mask)
+
+            features = self.dropout_input(features)
+            unmasked_features = self.dropout_features(unmasked_features)
+
+            if mask:
+                x, mask_indices = self.apply_mask(features, padding_mask, target_list)
+            else:
+                x = features
+                mask_indices = None
 
         # feature: (B, T, D), float
         # target: (B, T), long
         # x: (B, T, D), float -> (T, B, D), float
         # padding_mask: (B, T), bool
         # mask_indices: (B, T), bool
+
         x = x.transpose(0, 1)
         x, x_lens = self.encoder(x, (~padding_mask).sum(dim=-1))
         x = x.transpose(0, 1)
