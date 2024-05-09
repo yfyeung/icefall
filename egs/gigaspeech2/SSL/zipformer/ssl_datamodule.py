@@ -313,6 +313,13 @@ class Gigaspeech2DataModule:
 
     @lru_cache()
     def train_vi_cuts(self) -> CutSet:
+        logging.info("About to get train cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "gigaspeech2_cuts_train.jsonl.gz"
+        )
+
+    @lru_cache()
+    def train_vi_cuts_split(self) -> CutSet:
         logging.info(f"About to get train cuts")
         split_lis = os.listdir(self.args.manifest_dir)
         split_lis = [item for item in split_lis if os.path.isdir(os.path.join(self.args.manifest_dir, item))]

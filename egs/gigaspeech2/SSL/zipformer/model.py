@@ -303,7 +303,7 @@ class AsrModel(nn.Module):
               lm_scale * lm_probs + am_scale * am_probs +
               (1-lm_scale-am_scale) * combined_probs
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim == 3, x.shape
         assert y.num_axes == 2, y.num_axes
 
         assert x.size(0) == y.dim0, (x.shape, y.dim0)

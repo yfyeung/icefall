@@ -200,6 +200,13 @@ def add_model_arguments(parser: argparse.ArgumentParser):
     )
 
     # masking
+    parser.add_argument(
+        "--mask-before-cnn",
+        type=bool,
+        default=False,
+        help="use for BEST-RQ",
+    )
+
     parser.add_argument("--mask-length", type=int, default=10, help="mask_length")
 
     parser.add_argument(
@@ -574,14 +581,14 @@ def get_parser():
 
     parser.add_argument(
         "--min-keep-size",
-        type=float,
+        type=int,
         default=32000,
         help="exclude sample longer less than this.",
     )
 
     parser.add_argument(
         "--max-sample-size",
-        type=float,
+        type=int,
         default=250000,
         help="max sample size to crop to for batching.",
     )
@@ -638,6 +645,9 @@ def get_params() -> AttributeDict:
             "log_interval": 50,
             "reset_interval": 200,
             "valid_interval": 3000,  # For the 100h subset, use 800
+
+            # zipformer parameter
+            "feature_dim": 80,
             "env_info": get_env_info(),
         }
     )
@@ -1151,7 +1161,7 @@ def run(rank, world_size, args):
     gigaspeech2 = Gigaspeech2DataModule(args)
 
     train_cuts = (
-        gigaspeech2.train_all_shuf_cuts()
+        gigaspeech2.train_vi_cuts()
     )
 
     def remove_short_and_long_utt(c: Cut):
@@ -1165,7 +1175,7 @@ def run(rank, world_size, args):
         # the threshold
         if (
             c.duration < params.min_keep_size / params.sample_rate
-            or c.duration > params.max_keep_size / params.sample_rate
+            or c.duration > min(params.max_keep_size / params.sample_rate, 30)
         ):
             logging.warning(
                 f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
@@ -1192,7 +1202,7 @@ def run(rank, world_size, args):
         sampler_state_dict=sampler_state_dict,
     )
 
-    valid_cuts = gigaspeech2.dev_clean_cuts()
+    valid_cuts = gigaspeech2.dev_vi_cuts()
     # valid_cuts += gigaspeech2.dev_other_cuts()
     valid_cuts = valid_cuts.filter(remove_short_and_long_utt)
 

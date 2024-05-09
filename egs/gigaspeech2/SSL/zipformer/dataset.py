@@ -84,9 +84,14 @@ class HubertDataset(torch.utils.data.Dataset):
         else:
             feature_size = min(min(feature_lens), self.max_sample_size)
 
-        features, padding_mask, feature_starts = self.collater_feature(
-            features, feature_lens, feature_size
-        )
+        try:
+            features, padding_mask, feature_starts = self.collater_feature(
+                features, feature_lens, feature_size
+            )
+        except:
+            print("--------------------------------------------------------")
+            print(cuts)
+            raise
 
         kmeans = [cut.custom["kmeans"] for cut in cuts]
         if type(kmeans[0]) == list:
@@ -126,7 +131,13 @@ class HubertDataset(torch.utils.data.Dataset):
 
     def collater_feature(self, features, feature_lens, feature_size):
         feature_dim = features[0].shape[-1]
-        collated_features = features[0].new_zeros(len(features), feature_size, feature_dim)
+
+        try:
+            collated_features = features[0].new_zeros(len(features), feature_size, feature_dim)
+        except:
+            print((len(features), feature_size, feature_dim))
+            raise
+
         padding_mask = (
             torch.BoolTensor(collated_features.shape[:-1]).fill_(False)
             # if self.pad_feature else None
@@ -198,6 +209,129 @@ class HubertDataset(torch.utils.data.Dataset):
         targets = self.collate_tokens(targets, pad_idx=pad, left_pad=False)
         return targets, lengths
 
+class HubertAsrDataset(torch.utils.data.Dataset):
+    """
+    In this implementation, there will always be a single channel.
+
+    Returns:
+
+    .. code-block::
+
+        {
+            'audio': (B x NumSamples) float tensor
+        }
+    """
+
+    def __init__(
+        self,
+        max_sample_size: Optional[int] = None,
+        sample_rate: float = 16000,
+        random_crop: bool = True,
+        pad_audio: bool = True,
+    ) -> None:
+        super().__init__()
+        self.sample_rate = sample_rate
+        self.random_crop = random_crop
+        self.pad_feature = pad_audio
+        self.max_sample_size = (
+            max_sample_size if max_sample_size is not None else sys.maxsize
+        )
+
+        # This attribute is a workaround to constantly growing HDF5 memory
+        # throughout the epoch. It regularly closes open file handles to
+        # reset the internal HDF5 caches.
+        self.hdf5_fix = Hdf5MemoryIssueFix(reset_interval=100)
+
+    def __getitem__(self, cuts: CutSet) -> Dict[str, Any]:
+        self._validate(cuts)
+        self.hdf5_fix.update()
+
+        # Sort the cuts by duration so that the first one determines the batch time dimensions.
+        cuts = cuts.sort_by_duration(ascending=False)
+
+        features = [torch.from_numpy(cut.load_features()) for cut in cuts]
+        feature_lens = [cut.num_frames for cut in cuts]
+
+        if self.pad_feature:
+            feature_size = min(max(feature_lens), self.max_sample_size)
+        else:
+            feature_size = min(min(feature_lens), self.max_sample_size)
+
+        features, padding_mask, feature_starts = self.collater_feature(
+            features, feature_lens, feature_size
+        )
+
+        return {
+            "cuts": cuts,
+            "audio": features,
+            "padding_mask": padding_mask,
+            "supervisions": default_collate(
+                [
+                    {
+                        "text": supervision.text,
+                    }
+                    for sequence_idx, cut in enumerate(cuts)
+                    for supervision in cut.supervisions
+                ]
+            ),
+        }
+
+    def postprocess(self, wav, cur_sample_rate):
+        if wav.dim() == 2:
+            wav = wav.mean(-1)
+        assert wav.dim() == 1, wav.dim()
+
+        if cur_sample_rate != self.sample_rate:
+            raise Exception(f"sr {cur_sample_rate} != {self.sample_rate}")
+
+        if self.normalize:
+            with torch.no_grad():
+                wav = F.layer_norm(wav, wav.shape)
+        return wav
+
+    def _validate(self, cuts: CutSet) -> None:
+        validate(cuts)
+        assert all(cut.has_recording for cut in cuts)
+
+    def crop_to_max_size(self, feature, target_size):
+        size = len(feature)
+        diff = size - target_size
+        if diff <= 0:
+            return feature, 0
+
+        start, end = 0, target_size
+        if self.random_crop:
+            start = np.random.randint(0, diff + 1)
+            end = size - diff + start
+        return feature[start:end, :], start
+
+    def collater_feature(self, features, feature_lens, feature_size):
+        feature_dim = features[0].shape[-1]
+
+        try:
+            collated_features = features[0].new_zeros(len(features), feature_size, feature_dim)
+        except:
+            print((len(features), feature_size, feature_dim))
+            raise
+
+        padding_mask = (
+            torch.BoolTensor(collated_features.shape[:-1]).fill_(False)
+            # if self.pad_feature else None
+        )
+        feature_starts = [0 for _ in features]
+        for i, (feature, feature_len) in enumerate(zip(features, feature_lens)):
+            diff = feature_len - feature_size
+            if diff == 0:
+                collated_features[i] = feature
+            elif diff < 0:
+                assert self.pad_feature
+                collated_features[i] = torch.cat([feature, feature.new_full((-diff, feature_dim), 0.0)])
+                padding_mask[i, diff:] = True
+            else:
+                collated_features[i], feature_starts[i] = self.crop_to_max_size(
+                    feature, feature_size
+                )
+        return collated_features, padding_mask, feature_starts
 
 if __name__ == "__main__":
     from lhotse import load_manifest_lazy
