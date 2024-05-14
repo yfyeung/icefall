@@ -113,7 +113,6 @@ def get_valjsonl(args):
 
     val_ids = {}
     for line in lines:
-        import pdb; pdb.set_trace()
         val_id, text = line.split("\t")
         val_ids[val_id] = text
 
