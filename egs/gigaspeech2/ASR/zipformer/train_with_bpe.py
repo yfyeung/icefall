@@ -323,7 +323,7 @@ def get_parser():
     parser.add_argument(
         "--bpe-model",
         type=str,
-        default="data/lang_bpe_500/bpe.model",
+        default="data/lang_bpe_2000/bpe.model",
         help="Path to the BPE model",
     )
 
@@ -965,9 +965,7 @@ def train_one_epoch(
             scaler.update()
             optimizer.zero_grad()
         except Exception as e:
-            logging.info(
-                f"Caught exception: {e}."
-            )
+            logging.info(f"Caught exception: {e}.")
             save_bad_model()
             display_and_save_batch(batch, params=params, sp=sp)
             raise
@@ -1203,11 +1201,18 @@ def run(rank, world_size, args):
         sampler_state_dict = None
 
     train_dl = gigaspeech2.train_dataloaders(
-        train_cuts, sampler_state_dict=sampler_state_dict
+        train_cuts,
+        sampler_state_dict=sampler_state_dict,
+        world_size=world_size,
+        rank=rank,
     )
 
     valid_cuts = gigaspeech2.test_cuts()
-    valid_dl = gigaspeech2.valid_dataloaders(valid_cuts)
+    valid_dl = gigaspeech2.valid_dataloaders(
+        valid_cuts,
+        world_size=world_size,
+        rank=rank,
+    )
 
     if 0 and not params.print_diagnostics:
         scan_pessimistic_batches_for_oom(

@@ -207,6 +207,8 @@ class GigaSpeech2AsrDataModule:
         self,
         cuts_train: CutSet,
         sampler_state_dict: Optional[Dict[str, Any]] = None,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
     ) -> DataLoader:
         """
         Args:
@@ -302,6 +304,8 @@ class GigaSpeech2AsrDataModule:
                 buffer_size=self.args.num_buckets * 2000,
                 shuffle_buffer_size=self.args.num_buckets * 5000,
                 drop_last=self.args.drop_last,
+                world_size=world_size,
+                rank=rank,
             )
         else:
             logging.info("Using SimpleCutSampler.")
@@ -309,6 +313,8 @@ class GigaSpeech2AsrDataModule:
                 cuts_train,
                 max_duration=self.args.max_duration,
                 shuffle=self.args.shuffle,
+                world_size=world_size,
+                rank=rank,
             )
         logging.info("About to create train dataloader")
 
@@ -332,7 +338,12 @@ class GigaSpeech2AsrDataModule:
 
         return train_dl
 
-    def valid_dataloaders(self, cuts_valid: CutSet) -> DataLoader:
+    def valid_dataloaders(
+        self,
+        cuts_valid: CutSet,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+    ) -> DataLoader:
         transforms = []
         if self.args.concatenate_cuts:
             transforms = [
@@ -357,6 +368,8 @@ class GigaSpeech2AsrDataModule:
             cuts_valid,
             max_duration=self.args.max_duration,
             shuffle=False,
+            world_size=world_size,
+            rank=rank,
         )
         logging.info("About to create dev dataloader")
         valid_dl = DataLoader(
@@ -372,9 +385,11 @@ class GigaSpeech2AsrDataModule:
     def test_dataloaders(self, cuts: CutSet) -> DataLoader:
         logging.debug("About to create test dataset")
         test = K2SpeechRecognitionDataset(
-            input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=80)))
-            if self.args.on_the_fly_feats
-            else eval(self.args.input_strategy)(),
+            input_strategy=(
+                OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=80)))
+                if self.args.on_the_fly_feats
+                else eval(self.args.input_strategy)()
+            ),
             return_cuts=self.args.return_cuts,
         )
         sampler = DynamicBucketingSampler(
@@ -393,9 +408,25 @@ class GigaSpeech2AsrDataModule:
 
     @lru_cache()
     def train_cuts(self) -> CutSet:
-        logging.info("About to get train thairathonline cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "gigaspeech2_cuts_thairathonline_threshold0.2.jsonl.gz"
+        logging.info("About to get train thairathonline threshold 0.2 cuts")
+        thairathonline_cuts = load_manifest_lazy(
+            self.args.manifest_dir
+            / "gigaspeech2_cuts_thairathonline_threshold0.2.jsonl.gz"
+        )
+
+        logging.info("About to get train thairathonline2 threshold 0.2 cuts")
+        thairathonline2_cuts = load_manifest_lazy(
+            self.args.manifest_dir
+            / "gigaspeech2_cuts_thairathonline2_threshold0.2.jsonl.gz"
+        )
+
+        return CutSet.mux(
+            thairathonline_cuts,
+            thairathonline2_cuts,
+            weights=[
+                len(thairathonline_cuts),
+                len(thairathonline2_cuts),
+            ],
         )
 
     @lru_cache()
@@ -415,6 +446,4 @@ class GigaSpeech2AsrDataModule:
     @lru_cache()
     def test_cv_cuts(self) -> CutSet:
         logging.info("About to get commonvoice test cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "cv-th_cuts_test.jsonl.gz"
-        )
+        return load_manifest_lazy(self.args.manifest_dir / "cv-th_cuts_test.jsonl.gz")
