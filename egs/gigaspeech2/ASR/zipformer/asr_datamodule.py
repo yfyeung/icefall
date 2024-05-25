@@ -407,7 +407,14 @@ class GigaSpeech2AsrDataModule:
         return test_dl
 
     @lru_cache()
-    def train_cuts(self) -> CutSet:
+    def train_iter1_cuts(self) -> CutSet:
+        logging.info("About to get train thairathonline cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "gigaspeech2_cuts_thairathonline.jsonl.gz"
+        )
+
+    @lru_cache()
+    def train_iter2_cuts(self) -> CutSet:
         logging.info("About to get train thairathonline threshold 0.2 cuts")
         thairathonline_cuts = load_manifest_lazy(
             self.args.manifest_dir
@@ -430,6 +437,44 @@ class GigaSpeech2AsrDataModule:
         )
 
     @lru_cache()
+    def train_iter3_cuts(self) -> CutSet:
+        logging.info("About to get train thairathonline threshold 0.2 cuts")
+        thairathonline_cuts = load_manifest_lazy(
+            self.args.manifest_dir
+            / "gigaspeech2_cuts_thairathonline_threshold0.2.jsonl.gz"
+        )
+
+        logging.info("About to get train thairathonline2 threshold 0.2 cuts")
+        thairathonline2_cuts = load_manifest_lazy(
+            self.args.manifest_dir
+            / "gigaspeech2_cuts_thairathonline2_threshold0.2.jsonl.gz"
+        )
+
+        logging.info("About to get train thairathonline3 threshold 0.2 cuts")
+        thairathonline3_cuts = load_manifest_lazy(
+            self.args.manifest_dir
+            / "gigaspeech2_cuts_thairathonline3_threshold0.2.jsonl.gz"
+        )
+
+        return CutSet.mux(
+            thairathonline_cuts,
+            thairathonline2_cuts,
+            thairathonline3_cuts,
+            weights=[
+                len(thairathonline_cuts),
+                len(thairathonline2_cuts),
+                len(thairathonline3_cuts),
+            ],
+        )
+
+    @lru_cache()
+    def valid_cuts(self) -> CutSet:
+        logging.info("About to get dev cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "gigaspeech2_cuts_dev.jsonl.gz"
+        )
+
+    @lru_cache()
     def test_cuts(self) -> CutSet:
         logging.info("About to get test cuts")
         return load_manifest_lazy(
@@ -437,13 +482,13 @@ class GigaSpeech2AsrDataModule:
         )
 
     @lru_cache()
-    def test_th_cuts(self) -> CutSet:
-        logging.info("About to get test th cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "gigaspeech2_cuts_test_th.jsonl.gz"
-        )
+    def test_cv_cuts(self) -> CutSet:
+        logging.info("About to get Common Voice 17.0 test cuts")
+        return load_manifest_lazy(self.args.manifest_dir / "cv-th_cuts_test.jsonl.gz")
 
     @lru_cache()
-    def test_cv_cuts(self) -> CutSet:
-        logging.info("About to get commonvoice test cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cv-th_cuts_test.jsonl.gz")
+    def test_fl_cuts(self) -> CutSet:
+        logging.info("About to get FLEURS test cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "fleurs-th_cuts_test.jsonl.gz"
+        )

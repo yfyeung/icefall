@@ -18,6 +18,7 @@
 import argparse
 import logging
 import re
+import string
 import unicodedata
 from pathlib import Path
 
@@ -57,36 +58,8 @@ def normalize_text(
     # Remove brackets with content
     text = re.sub(r"\([^\)]*\)", " ", text)
 
-    # Language-related normalization
-    if lang == "th":
-        # Digit mapping
-        text = re.sub("\u0030", "\u0E50", text)
-        text = re.sub("\u0031", "\u0E51", text)
-        text = re.sub("\u0032", "\u0E52", text)
-        text = re.sub("\u0033", "\u0E53", text)
-        text = re.sub("\u0034", "\u0E54", text)
-        text = re.sub("\u0035", "\u0E55", text)
-        text = re.sub("\u0036", "\u0E56", text)
-        text = re.sub("\u0037", "\u0E57", text)
-        text = re.sub("\u0038", "\u0E58", text)
-        text = re.sub("\u0039", "\u0E59", text)
-
-        # Currency symbol mapping
-        text = re.sub("\u0E3F", "\u0E1A\u0E32\u0E17", text)  # baht
-
-        # Remove punctuation
-        # text = re.sub("\u0E2F", "", text)  # Thanthakhat
-        text = re.sub("\u0E4F", "", text)  # Paiyannoi
-        text = re.sub("\u0E5A", "", text)  # Angkhan Pilok
-
-        # Remove non-Thai symbols
-        text = re.sub(r"[^\u0E00-\u0E7F]", "", text)
-
-        # Remove blank symbols
-        text = re.sub(r"\s", "", text)
-
-    else:
-        text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(f"[{re.escape(string.punctuation)}]", "", text)
+    text = re.sub(r"\s", "", text)
 
     return text
 
