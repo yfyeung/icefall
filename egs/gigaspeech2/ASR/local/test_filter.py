@@ -109,7 +109,7 @@ def filter_gigaspeech2(args):
                 cnt_2 += 1
             if score <= 0.1:
                 cnt_1 += 1
-            if score > 0.1 and score < 0.2:
+            if score > 0.2 and score < 0.25:
                 print(score)
                 print(ref)
                 print(hyp)
