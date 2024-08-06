@@ -830,7 +830,7 @@ def compute_loss(
     batch_idx_train = params.batch_idx_train
 
     texts = batch["supervisions"]["text"]
-    y = graph_compiler.texts_to_ids(texts)
+    y = graph_compiler.texts_to_ids(texts, sep="|")
     y = k2.RaggedTensor(y).to(device)
 
     with torch.set_grad_enabled(is_training):
@@ -1331,7 +1331,7 @@ def display_and_save_batch(
     audio = batch["audio"]
     logging.info(f"audio shape: {audio.shape}")
 
-    y = graph_compiler.texts_to_ids(batch["supervisions"]["text"])
+    y = graph_compiler.texts_to_ids(batch["supervisions"]["text"], sep="|")
     num_tokens = sum(len(i) for i in y)
     logging.info(f"num tokens: {num_tokens}")
 
