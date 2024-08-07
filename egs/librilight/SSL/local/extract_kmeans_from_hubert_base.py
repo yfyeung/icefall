@@ -102,7 +102,7 @@ def get_args():
     return parser.parse_args()
 
 
-def preprocess_and_save_one_cuts(
+def extract_and_save_one_cuts(
     raw_cuts_path, cuts_path, model, vad_model, apply_kmeans, do_normalize, device
 ):
     logging.info(f"Loading {raw_cuts_path}")
@@ -165,7 +165,7 @@ def preprocess_and_save_one_cuts(
     cuts.to_file(cuts_path)
 
 
-def preprocess_librilight(args):
+def extract_kmeans(args):
     assert args.subset in ("small", "medium", "large"), f"{args.subset}"
 
     output_dir = (
@@ -200,7 +200,7 @@ def preprocess_librilight(args):
             logging.info(f"{raw_cuts_path} does not exist - skipping it")
             return
 
-        preprocess_and_save_one_cuts(
+        extract_and_save_one_cuts(
             raw_cuts_path,
             cuts_path,
             model,
@@ -231,7 +231,7 @@ def preprocess_librilight(args):
                 logging.info(f"{raw_cuts_path} does not exist - skipping it")
                 continue
 
-            preprocess_and_save_one_cuts(
+            extract_and_save_one_cuts(
                 raw_cuts_path,
                 cuts_path,
                 model,
@@ -248,4 +248,4 @@ if __name__ == "__main__":
     logging.basicConfig(format=formatter, level=logging.INFO)
     args = get_args()
     logging.info(vars(args))
-    preprocess_librilight(args)
+    extract_kmeans(args)
