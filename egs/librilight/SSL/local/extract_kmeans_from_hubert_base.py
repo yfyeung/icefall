@@ -216,7 +216,7 @@ def preprocess_librilight(args):
         assert stop > start, "stop must be larger than start!"
 
         for i in range(start, stop):
-            idx = f"{i + 1}".zfill(num_digits)
+            idx = f"{i}".zfill(num_digits)
             logging.info(f"Processing {idx}/{stop - 1}")
 
             cuts_path = output_dir / f"{prefix}_cuts_{args.subset}.{idx}.jsonl.gz"
