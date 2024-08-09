@@ -83,6 +83,16 @@ class LibriLightDataModule:
             "single batch. You can reduce it if it causes CUDA OOM.",
         )
         group.add_argument(
+            "--quadratic-duration",
+            type=float,
+            default=15,
+            help="When set, it adds an extra penalty that's quadratic"
+            "in size w.r.t. a cuts duration. This helps get a more"
+            "even GPU utilization across different input lengths when"
+            "models have quadratic input complexity. Set between 15"
+            "and 40 for transformers.",
+        )
+        group.add_argument(
             "--bucketing-sampler",
             type=str2bool,
             default=True,
@@ -166,6 +176,7 @@ class LibriLightDataModule:
             train_sampler = DynamicBucketingSampler(
                 cuts_train,
                 max_duration=self.args.max_duration,
+                quadratic_duration=self.args.quadratic_duration,
                 shuffle=self.args.shuffle,
                 num_buckets=self.args.num_buckets,
                 drop_last=self.args.drop_last,
@@ -229,6 +240,7 @@ class LibriLightDataModule:
         valid_sampler = DynamicBucketingSampler(
             cuts_valid,
             max_duration=self.args.max_duration,
+            quadratic_duration=self.args.quadratic_duration,
             shuffle=False,
             world_size=world_size,
             rank=rank,
