@@ -85,7 +85,7 @@ class LibriLightDataModule:
         group.add_argument(
             "--quadratic-duration",
             type=float,
-            default=15,
+            default=None,
             help="When set, it adds an extra penalty that's quadratic"
             "in size w.r.t. a cuts duration. This helps get a more"
             "even GPU utilization across different input lengths when"
