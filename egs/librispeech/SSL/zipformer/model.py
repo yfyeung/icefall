@@ -122,12 +122,11 @@ class AsrModel(nn.Module):
         if padding_mask is None:
             padding_mask = torch.zeros_like(x, dtype=torch.bool)
 
-        encoder_out, padding_mask = self.encoder.extract_features(
+        encoder_out, encoder_out_lens = self.encoder.extract_features(
             source=x,
             padding_mask=padding_mask,
             mask=self.encoder.training,
         )
-        encoder_out_lens = torch.sum(~padding_mask, dim=1)
         assert torch.all(encoder_out_lens > 0), encoder_out_lens
 
         return encoder_out, encoder_out_lens

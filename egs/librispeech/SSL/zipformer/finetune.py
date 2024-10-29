@@ -751,6 +751,9 @@ def get_encoder_model(params: AttributeDict) -> nn.Module:
         logging.info(f"Loading {params.pretrained_dir}")
         pretrained = torch.load(params.pretrained_dir)
         encoder = HubertModel(params)
+        pretrained["model"]["encoder.downsample_output.bias"] = torch.randn(
+            2, dtype=torch.float32
+        )
         encoder.load_state_dict(pretrained["model"])
     else:
         encoder = HubertModel(params)

@@ -278,7 +278,7 @@ class HubertModel(nn.Module):
         self.mask_emb = nn.Parameter(torch.FloatTensor(encoder_input_dim).uniform_())
 
         self.encoder = Zipformer2(
-            output_downsampling_factor=1,
+            output_downsampling_factor=2,
             downsampling_factor=_to_int_tuple(cfg.downsampling_factor),
             num_encoder_layers=_to_int_tuple(cfg.num_encoder_layers),
             encoder_dim=_to_int_tuple(cfg.encoder_dim),
@@ -432,7 +432,12 @@ class HubertModel(nn.Module):
         x = x.transpose(0, 1)
 
         if features_only:
-            return {"x": x, "padding_mask": padding_mask, "features": features}
+            return {
+                "x": x,
+                "x_lens": x_lens,
+                "padding_mask": padding_mask,
+                "features": features,
+            }
 
         if not self.skip_masked:
             masked_indices = torch.logical_and(~padding_mask, mask_indices)
@@ -483,7 +488,7 @@ class HubertModel(nn.Module):
             output_layer=output_layer,
         )
         feature = res["features"] if ret_conv else res["x"]
-        return feature, res["padding_mask"]
+        return feature, res["x_lens"]
 
     def get_logits(self, net_output, is_masked=True):
         if is_masked:
