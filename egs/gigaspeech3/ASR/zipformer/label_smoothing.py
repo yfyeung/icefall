@@ -1,1 +1,1 @@
-../../librispeech/ASR/zipformer/label_smoothing.py
+../../../librispeech/ASR/zipformer/label_smoothing.py

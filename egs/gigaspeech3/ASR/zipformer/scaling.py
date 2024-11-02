@@ -1,1 +1,1 @@
-../../librispeech/ASR/zipformer/scaling.py
+../../../librispeech/ASR/zipformer/scaling.py

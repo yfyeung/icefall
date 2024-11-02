@@ -3,6 +3,7 @@
 #                                                       Wei Kang,
 #                                                       Mingshuang Luo,
 #                                                       Zengwei Yao,
+#                                                       Yifan Yang,
 #                                                       Daniel Povey)
 #
 # See ../../../../LICENSE for clarification regarding multiple authors
@@ -30,7 +31,6 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3"
   --start-epoch 1 \
   --use-fp16 1 \
   --exp-dir zipformer/exp \
-  --full-libri 1 \
   --max-duration 1000
 
 # For streaming model training:
@@ -41,7 +41,6 @@ export CUDA_VISIBLE_DEVICES="0,1,2,3"
   --use-fp16 1 \
   --exp-dir zipformer/exp \
   --causal 1 \
-  --full-libri 1 \
   --max-duration 1000
 
 It supports training with:
@@ -66,7 +65,7 @@ import sentencepiece as spm
 import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
-from asr_datamodule import LibriSpeechAsrDataModule
+from asr_datamodule import GigaSpeech3AsrDataModule
 from attention_decoder import AttentionDecoderModel
 from decoder import Decoder
 from joiner import Joiner
@@ -377,7 +376,7 @@ def get_parser():
     parser.add_argument(
         "--bpe-model",
         type=str,
-        default="data/lang_bpe_500/bpe.model",
+        default="data/lang_bpe_2000/bpe.model",
         help="Path to the BPE model",
     )
 
@@ -1358,60 +1357,9 @@ def run(rank, world_size, args):
     if params.inf_check:
         register_inf_check_hooks(model)
 
-    librispeech = LibriSpeechAsrDataModule(args)
+    gigaspeech3 = GigaSpeech3AsrDataModule(args)
 
-    if params.full_libri:
-        train_cuts = librispeech.train_all_shuf_cuts()
-
-        # previously we used the following code to load all training cuts,
-        # strictly speaking, shuffled training cuts should be used instead,
-        # but we leave the code here to demonstrate that there is an option
-        # like this to combine multiple cutsets
-
-        # train_cuts = librispeech.train_clean_100_cuts()
-        # train_cuts += librispeech.train_clean_360_cuts()
-        # train_cuts += librispeech.train_other_500_cuts()
-    else:
-        train_cuts = librispeech.train_clean_100_cuts()
-
-    def remove_short_and_long_utt(c: Cut):
-        # Keep only utterances with duration between 1 second and 20 seconds
-        #
-        # Caution: There is a reason to select 20.0 here. Please see
-        # ../local/display_manifest_statistics.py
-        #
-        # You should use ../local/display_manifest_statistics.py to get
-        # an utterance duration distribution for your dataset to select
-        # the threshold
-        if c.duration < 1.0 or c.duration > 20.0:
-            # logging.warning(
-            #     f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
-            # )
-            return False
-
-        # In pruned RNN-T, we require that T >= S
-        # where T is the number of feature frames after subsampling
-        # and S is the number of tokens in the utterance
-
-        # In ./zipformer.py, the conv module uses the following expression
-        # for subsampling
-        T = ((c.num_frames - 7) // 2 + 1) // 2
-        tokens = sp.encode(c.supervisions[0].text, out_type=str)
-
-        if T < len(tokens):
-            logging.warning(
-                f"Exclude cut with ID {c.id} from training. "
-                f"Number of frames (before subsampling): {c.num_frames}. "
-                f"Number of frames (after subsampling): {T}. "
-                f"Text: {c.supervisions[0].text}. "
-                f"Tokens: {tokens}. "
-                f"Number of tokens: {len(tokens)}"
-            )
-            return False
-
-        return True
-
-    train_cuts = train_cuts.filter(remove_short_and_long_utt)
+    train_cuts = gigaspeech3.train_cuts()
 
     if params.start_batch > 0 and checkpoints and "sampler" in checkpoints:
         # We only load the sampler's state dict when it loads a checkpoint
@@ -1420,15 +1368,21 @@ def run(rank, world_size, args):
     else:
         sampler_state_dict = None
 
-    train_dl = librispeech.train_dataloaders(
-        train_cuts, sampler_state_dict=sampler_state_dict
+    train_dl = gigaspeech3.train_dataloaders(
+        train_cuts,
+        sampler_state_dict=sampler_state_dict,
+        world_size=world_size,
+        rank=rank,
     )
 
-    valid_cuts = librispeech.dev_clean_cuts()
-    valid_cuts += librispeech.dev_other_cuts()
-    valid_dl = librispeech.valid_dataloaders(valid_cuts)
+    valid_cuts = gigaspeech3.valid_cuts()
+    valid_dl = gigaspeech3.valid_dataloaders(
+        valid_cuts,
+        world_size=world_size,
+        rank=rank,
+    )
 
-    if not params.print_diagnostics:
+    if 0 and not params.print_diagnostics:
         scan_pessimistic_batches_for_oom(
             model=model,
             train_dl=train_dl,
@@ -1571,7 +1525,7 @@ def scan_pessimistic_batches_for_oom(
 
 def main():
     parser = get_parser()
-    LibriSpeechAsrDataModule.add_arguments(parser)
+    GigaSpeech3AsrDataModule.add_arguments(parser)
     args = parser.parse_args()
     args.exp_dir = Path(args.exp_dir)
 

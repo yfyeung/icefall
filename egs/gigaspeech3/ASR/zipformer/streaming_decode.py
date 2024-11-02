@@ -1,1 +1,1 @@
-../../librispeech/ASR/zipformer/streaming_decode.py
+../../../librispeech/ASR/zipformer/streaming_decode.py

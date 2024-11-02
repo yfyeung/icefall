@@ -1,1 +1,1 @@
-../../librispeech/ASR/zipformer/streaming_beam_search.py
+../../../librispeech/ASR/zipformer/streaming_beam_search.py
