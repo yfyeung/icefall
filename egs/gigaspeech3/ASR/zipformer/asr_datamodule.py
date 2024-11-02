@@ -1,5 +1,5 @@
 # Copyright      2021  Piotr Żelasko
-# Copyright      2022  Xiaomi Corporation     (Author: Mingshuang Luo)
+# Copyright      2024  Xiaomi Corporation     (Author: Yifan Yang)
 #
 # See ../../../../LICENSE for clarification regarding multiple authors
 #
@@ -52,11 +52,11 @@ class _SeedWorkers:
         fix_random_seed(self.seed + worker_id)
 
 
-class LibriSpeechAsrDataModule:
+class GigaSpeech3AsrDataModule:
     """
     DataModule for k2 ASR experiments.
     It assumes there is always one train and valid dataloader,
-    but there can be multiple test dataloaders (e.g. LibriSpeech test-clean
+    but there can be multiple test dataloaders (e.g. GigaSpeech3 test-clean
     and test-other).
 
     It contains all the common data pipeline modules used in ASR
@@ -82,20 +82,6 @@ class LibriSpeechAsrDataModule:
             "effective batch sizes, sampling strategies, applied data "
             "augmentations, etc.",
         )
-        group.add_argument(
-            "--full-libri",
-            type=str2bool,
-            default=True,
-            help="""Used only when --mini-libri is False.When enabled,
-            use 960h LibriSpeech. Otherwise, use 100h subset.""",
-        )
-        group.add_argument(
-            "--mini-libri",
-            type=str2bool,
-            default=False,
-            help="True for mini librispeech",
-        )
-
         group.add_argument(
             "--manifest-dir",
             type=Path,
@@ -174,7 +160,6 @@ class LibriSpeechAsrDataModule:
             "field: batch['supervisions']['cut'] with the cuts that "
             "were used to construct it.",
         )
-
         group.add_argument(
             "--num-workers",
             type=int,
@@ -182,14 +167,12 @@ class LibriSpeechAsrDataModule:
             help="The number of training dataloader workers that "
             "collect the batches.",
         )
-
         group.add_argument(
             "--enable-spec-aug",
             type=str2bool,
             default=True,
             help="When enabled, use SpecAugment for training dataset.",
         )
-
         group.add_argument(
             "--spec-aug-time-warp-factor",
             type=int,
@@ -199,15 +182,13 @@ class LibriSpeechAsrDataModule:
             "Larger values mean more warping. "
             "A value less than 1 means to disable time warp.",
         )
-
         group.add_argument(
             "--enable-musan",
             type=str2bool,
-            default=True,
+            default=False,
             help="When enabled, select noise from MUSAN and mix it"
             "with training dataset. ",
         )
-
         group.add_argument(
             "--input-strategy",
             type=str,
@@ -219,6 +200,8 @@ class LibriSpeechAsrDataModule:
         self,
         cuts_train: CutSet,
         sampler_state_dict: Optional[Dict[str, Any]] = None,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
     ) -> DataLoader:
         """
         Args:
@@ -314,6 +297,8 @@ class LibriSpeechAsrDataModule:
                 buffer_size=self.args.num_buckets * 2000,
                 shuffle_buffer_size=self.args.num_buckets * 5000,
                 drop_last=self.args.drop_last,
+                world_size=world_size,
+                rank=rank,
             )
         else:
             logging.info("Using SimpleCutSampler.")
@@ -321,6 +306,8 @@ class LibriSpeechAsrDataModule:
                 cuts_train,
                 max_duration=self.args.max_duration,
                 shuffle=self.args.shuffle,
+                world_size=world_size,
+                rank=rank,
             )
         logging.info("About to create train dataloader")
 
@@ -344,7 +331,12 @@ class LibriSpeechAsrDataModule:
 
         return train_dl
 
-    def valid_dataloaders(self, cuts_valid: CutSet) -> DataLoader:
+    def valid_dataloaders(
+        self,
+        cuts_valid: CutSet,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+    ) -> DataLoader:
         transforms = []
         if self.args.concatenate_cuts:
             transforms = [
@@ -369,6 +361,8 @@ class LibriSpeechAsrDataModule:
             cuts_valid,
             max_duration=self.args.max_duration,
             shuffle=False,
+            world_size=world_size,
+            rank=rank,
         )
         logging.info("About to create dev dataloader")
         valid_dl = DataLoader(
@@ -404,89 +398,24 @@ class LibriSpeechAsrDataModule:
         return test_dl
 
     @lru_cache()
-    def train_clean_5_cuts(self) -> CutSet:
-        logging.info("mini_librispeech: About to get train-clean-5 cuts")
+    def train_cuts(self) -> CutSet:
+        logging.info("About to get train ytnnews24-0 cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-clean-5.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech3_cuts_ytnnews24-0.jsonl.gz"
         )
 
     @lru_cache()
-    def train_clean_100_cuts(self) -> CutSet:
-        logging.info("About to get train-clean-100 cuts")
+    def valid_cuts(self) -> CutSet:
+        logging.info("About to get dev cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-clean-100.jsonl.gz"
+            # self.args.manifest_dir / "gigaspeech3_cuts_dev.jsonl.gz"
+            self.args.manifest_dir
+            / "gigaspeech3_cuts_test.jsonl.gz"
         )
 
     @lru_cache()
-    def train_clean_360_cuts(self) -> CutSet:
-        logging.info("About to get train-clean-360 cuts")
+    def test_cuts(self) -> CutSet:
+        logging.info("About to get test cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-clean-360.jsonl.gz"
+            self.args.manifest_dir / "gigaspeech3_cuts_test.jsonl.gz"
         )
-
-    @lru_cache()
-    def train_other_500_cuts(self) -> CutSet:
-        logging.info("About to get train-other-500 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-other-500.jsonl.gz"
-        )
-
-    @lru_cache()
-    def train_all_shuf_cuts(self) -> CutSet:
-        logging.info(
-            "About to get the shuffled train-clean-100, \
-            train-clean-360 and train-other-500 cuts"
-        )
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_train-all-shuf.jsonl.gz"
-        )
-
-    @lru_cache()
-    def dev_clean_2_cuts(self) -> CutSet:
-        logging.info("mini_librispeech: About to get dev-clean-2 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-clean-2.jsonl.gz"
-        )
-
-    @lru_cache()
-    def dev_clean_cuts(self) -> CutSet:
-        logging.info("About to get dev-clean cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-clean.jsonl.gz"
-        )
-
-    @lru_cache()
-    def dev_other_cuts(self) -> CutSet:
-        logging.info("About to get dev-other cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-other.jsonl.gz"
-        )
-
-    @lru_cache()
-    def test_clean_cuts(self) -> CutSet:
-        logging.info("About to get test-clean cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-clean.jsonl.gz"
-        )
-
-    @lru_cache()
-    def test_other_cuts(self) -> CutSet:
-        logging.info("About to get test-other cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-other.jsonl.gz"
-        )
-
-    @lru_cache()
-    def gigaspeech_subset_small_cuts(self) -> CutSet:
-        logging.info("About to get Gigaspeech subset-S cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cuts_S.jsonl.gz")
-
-    @lru_cache()
-    def gigaspeech_dev_cuts(self) -> CutSet:
-        logging.info("About to get Gigaspeech dev cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cuts_DEV.jsonl.gz")
-
-    @lru_cache()
-    def gigaspeech_test_cuts(self) -> CutSet:
-        logging.info("About to get Gigaspeech test cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cuts_TEST.jsonl.gz")

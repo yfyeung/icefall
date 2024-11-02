@@ -108,10 +108,12 @@ if [ $stage -le 7 ] && [ $stop_stage -ge 7 ]; then
     mkdir -p $lang_dir
 
     if [ ! -f $lang_dir/transcript_words.txt ]; then
-      gunzip -c "data/fbank/gigaspeech3_cuts_ytnnews24-0.jsonl.gz" \
-        | jq '.text' \
+      gunzip -c "data/fbank/gigaspeech3_cuts_test.jsonl.gz" \
+        "data/fbank/gigaspeech3_cuts_ytnnews24-0.jsonl.gz" \
+        | jq '.supervisions[].text' \
         | sed 's/"//g' \
       > $lang_dir/transcript_words.txt
+    fi
 
     if [ ! -f $lang_dir/bpe.model ]; then
       ./local/train_bpe_model.py \
