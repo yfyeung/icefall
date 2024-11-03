@@ -198,7 +198,7 @@ def get_parser():
     parser.add_argument(
         "--bpe-model",
         type=str,
-        default="data/lang_bpe_500/bpe.model",
+        default="data/lang_bpe_2000/bpe.model",
         help="Path to the BPE model",
     )
 
@@ -468,7 +468,7 @@ def decode_one_batch(
             max_states=params.max_states,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "fast_beam_search_nbest_LG":
         hyp_tokens = fast_beam_search_nbest_LG(
             model=model,
@@ -496,7 +496,7 @@ def decode_one_batch(
             nbest_scale=params.nbest_scale,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "fast_beam_search_nbest_oracle":
         hyp_tokens = fast_beam_search_nbest_oracle(
             model=model,
@@ -511,7 +511,7 @@ def decode_one_batch(
             nbest_scale=params.nbest_scale,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "greedy_search" and params.max_sym_per_frame == 1:
         hyp_tokens = greedy_search_batch(
             model=model,
@@ -519,7 +519,7 @@ def decode_one_batch(
             encoder_out_lens=encoder_out_lens,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "modified_beam_search":
         hyp_tokens = modified_beam_search(
             model=model,
@@ -529,7 +529,7 @@ def decode_one_batch(
             context_graph=context_graph,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "modified_beam_search_lm_shallow_fusion":
         hyp_tokens = modified_beam_search_lm_shallow_fusion(
             model=model,
@@ -539,7 +539,7 @@ def decode_one_batch(
             LM=LM,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "modified_beam_search_LODR":
         hyp_tokens = modified_beam_search_LODR(
             model=model,
@@ -552,7 +552,7 @@ def decode_one_batch(
             context_graph=context_graph,
         )
         for hyp in sp.decode(hyp_tokens):
-            hyps.append(hyp.split())
+            hyps.append(list(hyp))
     elif params.decoding_method == "modified_beam_search_lm_rescore":
         lm_scale_list = [0.01 * i for i in range(10, 50)]
         ans_dict = modified_beam_search_lm_rescore(
@@ -598,7 +598,7 @@ def decode_one_batch(
                 raise ValueError(
                     f"Unsupported decoding method: {params.decoding_method}"
                 )
-            hyps.append(sp.decode(hyp).split())
+            hyps.append(list(sp.decode(hyp)))
 
     # prefix = ( "greedy_search" | "fast_beam_search_nbest" | "modified_beam_search" )
     prefix = f"{params.decoding_method}"
@@ -624,7 +624,7 @@ def decode_one_batch(
             ans = dict()
             assert ans_dict is not None
             for key, hyps in ans_dict.items():
-                hyps = [sp.decode(hyp).split() for hyp in hyps]
+                hyps = [list(sp.decode(hyp)) for hyp in hyps]
                 ans[f"{prefix}_{key}"] = hyps
             return ans
         else:
@@ -706,7 +706,7 @@ def decode_dataset(
             this_batch = []
             assert len(hyps) == len(texts)
             for cut_id, hyp_words, ref_text in zip(cut_ids, hyps, texts):
-                ref_words = ref_text.split()
+                ref_words = list("".join(ref_text.split()))
                 this_batch.append((cut_id, ref_words, hyp_words))
 
             results[name].extend(this_batch)
@@ -753,7 +753,11 @@ def save_wer_results(
         errs_filename = params.res_dir / f"errs-{test_set_name}-{params.suffix}.txt"
         with open(errs_filename, "w", encoding="utf8") as fd:
             wer = write_error_stats(
-                fd, f"{test_set_name}-{key}", results, enable_log=True
+                fd,
+                f"{test_set_name}-{key}",
+                results,
+                enable_log=True,
+                compute_CER=True,
             )
             test_set_wers[key] = wer
 
@@ -1047,8 +1051,12 @@ def main():
 
     test_dl = gigaspeech3.test_dataloaders(test_cuts)
 
-    test_sets = ["test",]
-    test_dls = [test_dl,]
+    test_sets = [
+        "test",
+    ]
+    test_dls = [
+        test_dl,
+    ]
 
     for test_set, test_dl in zip(test_sets, test_dls):
         results_dict = decode_dataset(
