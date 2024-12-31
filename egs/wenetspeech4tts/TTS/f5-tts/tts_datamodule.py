@@ -165,6 +165,8 @@ class TtsDataModule:
         self,
         cuts_train: CutSet,
         sampler_state_dict: Optional[Dict[str, Any]] = None,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
     ) -> DataLoader:
         """
         Args:
@@ -181,27 +183,6 @@ class TtsDataModule:
             return_cuts=self.args.return_cuts,
         )
 
-        if self.args.on_the_fly_feats:
-            raise NotImplementedError(
-                "On-the-fly feature extraction is not implemented yet."
-            )
-            # sampling_rate = 22050
-            # config = MatchaFbankConfig(
-            #     n_fft=1024,
-            #     n_mels=80,
-            #     sampling_rate=sampling_rate,
-            #     hop_length=256,
-            #     win_length=1024,
-            #     f_min=0,
-            #     f_max=8000,
-            # )
-            # train = SpeechSynthesisDataset(
-            #     return_text=True,
-            #     return_tokens=False,
-            #     feature_input_strategy=OnTheFlyFeatures(MatchaFbank(config)),
-            #     return_cuts=self.args.return_cuts,
-            # )
-
         if self.args.bucketing_sampler:
             logging.info("Using DynamicBucketingSampler.")
             train_sampler = DynamicBucketingSampler(
@@ -212,6 +193,8 @@ class TtsDataModule:
                 buffer_size=self.args.num_buckets * 2000,
                 shuffle_buffer_size=self.args.num_buckets * 5000,
                 drop_last=self.args.drop_last,
+                world_size=world_size,
+                rank=rank,
             )
         else:
             logging.info("Using SimpleCutSampler.")
@@ -219,6 +202,8 @@ class TtsDataModule:
                 cuts_train,
                 max_duration=self.args.max_duration,
                 shuffle=self.args.shuffle,
+                world_size=world_size,
+                rank=rank,
             )
         logging.info("About to create train dataloader")
 
@@ -243,40 +228,26 @@ class TtsDataModule:
 
         return train_dl
 
-    def valid_dataloaders(self, cuts_valid: CutSet) -> DataLoader:
+    def valid_dataloaders(
+        self,
+        cuts_valid: CutSet,
+        world_size: Optional[int] = None,
+        rank: Optional[int] = None,
+    ) -> DataLoader:
         logging.info("About to create dev dataset")
-        if self.args.on_the_fly_feats:
-            raise NotImplementedError(
-                "On-the-fly feature extraction is not implemented yet."
-            )
-            # sampling_rate = 22050
-            # config = MatchaFbankConfig(
-            #     n_fft=1024,
-            #     n_mels=80,
-            #     sampling_rate=sampling_rate,
-            #     hop_length=256,
-            #     win_length=1024,
-            #     f_min=0,
-            #     f_max=8000,
-            # )
-            # validate = SpeechSynthesisDataset(
-            #     return_text=True,
-            #     return_tokens=False,
-            #     feature_input_strategy=OnTheFlyFeatures(MatchaFbank(config)),
-            #     return_cuts=self.args.return_cuts,
-            # )
-        else:
-            validate = SpeechSynthesisDataset(
-                return_text=True,
-                return_tokens=False,
-                feature_input_strategy=eval(self.args.input_strategy)(),
-                return_cuts=self.args.return_cuts,
-            )
+        validate = SpeechSynthesisDataset(
+            return_text=True,
+            return_tokens=False,
+            feature_input_strategy=eval(self.args.input_strategy)(),
+            return_cuts=self.args.return_cuts,
+        )
         valid_sampler = DynamicBucketingSampler(
             cuts_valid,
             max_duration=self.args.max_duration,
             num_buckets=self.args.num_buckets,
             shuffle=False,
+            world_size=world_size,
+            rank=rank,
         )
         logging.info("About to create valid dataloader")
         valid_dl = DataLoader(
@@ -292,33 +263,12 @@ class TtsDataModule:
 
     def test_dataloaders(self, cuts: CutSet) -> DataLoader:
         logging.info("About to create test dataset")
-        if self.args.on_the_fly_feats:
-            raise NotImplementedError(
-                "On-the-fly feature extraction is not implemented yet."
-            )
-            # sampling_rate = 22050
-            # config = MatchaFbankConfig(
-            #     n_fft=1024,
-            #     n_mels=80,
-            #     sampling_rate=sampling_rate,
-            #     hop_length=256,
-            #     win_length=1024,
-            #     f_min=0,
-            #     f_max=8000,
-            # )
-            # test = SpeechSynthesisDataset(
-            #     return_text=True,
-            #     return_tokens=False,
-            #     feature_input_strategy=OnTheFlyFeatures(MatchaFbank(config)),
-            #     return_cuts=self.args.return_cuts,
-            # )
-        else:
-            test = SpeechSynthesisDataset(
-                return_text=True,
-                return_tokens=False,
-                feature_input_strategy=eval(self.args.input_strategy)(),
-                return_cuts=self.args.return_cuts,
-            )
+        test = SpeechSynthesisDataset(
+            return_text=True,
+            return_tokens=False,
+            feature_input_strategy=eval(self.args.input_strategy)(),
+            return_cuts=self.args.return_cuts,
+        )
         test_sampler = DynamicBucketingSampler(
             cuts,
             max_duration=self.args.max_duration,
@@ -338,7 +288,7 @@ class TtsDataModule:
     def train_cuts(self) -> CutSet:
         logging.info("About to get train cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / f"{self.args.prefix}_cuts_train.jsonl.gz"
+            self.args.manifest_dir / f"wenetspeech4tts_cuts_Premium.jsonl.gz"
         )
 
     @lru_cache()

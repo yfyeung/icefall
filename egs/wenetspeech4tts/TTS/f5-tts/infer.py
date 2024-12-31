@@ -282,7 +282,7 @@ def main():
 
     model = get_model(args).eval().to(device)
     checkpoint = torch.load(args.model_path, map_location="cpu")
-    if "ema_model_state_dict" in checkpoint or 'model_state_dict' in checkpoint:
+    if "ema_model_state_dict" in checkpoint or "model_state_dict" in checkpoint:
         model = load_F5_TTS_pretrained_checkpoint(model, args.model_path)
     else:
         _ = load_checkpoint(
@@ -328,7 +328,7 @@ def main():
 
                     generated_wave = vocoder(gen_mel_spec).squeeze(0).cpu()
                     target_rms = 0.1
-                    target_sample_rate = 24_000
+                    target_sample_rate = 24000
                     if ref_rms_list[i] < target_rms:
                         generated_wave = generated_wave * ref_rms_list[i] / target_rms
                     torchaudio.save(

@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 import random
 from collections import defaultdict
-from importlib.resources import files
 
 import jieba
 import torch
+from importlib_resources import files
 from pypinyin import Style, lazy_pinyin
 from torch.nn.utils.rnn import pad_sequence
 

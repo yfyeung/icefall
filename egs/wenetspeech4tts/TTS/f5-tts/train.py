@@ -18,11 +18,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Usage:
-world_size=8
-exp_dir=exp/ft-tts
-"""
 
 import argparse
 import copy
@@ -155,7 +150,7 @@ def get_parser():
     parser.add_argument(
         "--exp-dir",
         type=Path,
-        default="exp/valle_dev",
+        default="exp",
         help="""The experiment dir.
         It specifies the directory where all training related
         files, e.g., checkpoints, log, etc, are saved
@@ -165,15 +160,13 @@ def get_parser():
     parser.add_argument(
         "--tokens",
         type=str,
-        default="f5-tts/vocab.txt",
+        default="data/tokenized/unique_text_tokens.k2symbols",
         help="Path to the unique text tokens file",
     )
 
     parser.add_argument(
         "--pretrained-model-path",
         type=str,
-        default="/home/yuekaiz//HF/F5-TTS/F5TTS_Base_bigvgan/model_1250000.pt",
-        help="Path to the unique text tokens file",
     )
 
     parser.add_argument(
@@ -267,7 +260,7 @@ def get_parser():
     parser.add_argument(
         "--dtype",
         type=str,
-        default="bfloat16",
+        default="float16",
         help="Training dtype: float32 bfloat16 float16.",
     )
 
@@ -412,7 +405,6 @@ def get_model(params):
 def load_F5_TTS_pretrained_checkpoint(
     model, ckpt_path, device: str = "cpu", dtype=torch.float32
 ):
-    # model = model.to(dtype)
     checkpoint = torch.load(ckpt_path, map_location=device, weights_only=True)
     if "ema_model_state_dict" in checkpoint:
         checkpoint["model_state_dict"] = {
@@ -632,14 +624,6 @@ def compute_validation_loss(
         params.best_valid_epoch = params.cur_epoch
         params.best_valid_loss = loss_value
 
-    # if params.visualize:
-    #     output_dir = Path(f"{params.exp_dir}/eval/step-{params.batch_idx_train:06d}")
-    #     output_dir.mkdir(parents=True, exist_ok=True)
-    #     if isinstance(model, DDP):
-    #         model.module.visualize(predicts, batch, output_dir=output_dir)
-    #     else:
-    #         model.visualize(predicts, batch, output_dir=output_dir)
-
     return tot_loss
 
 
@@ -650,7 +634,7 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     scheduler: LRSchedulerType,
     train_dl: torch.utils.data.DataLoader,
-    valid_dl: torch.utils.data.DataLoader,
+    # valid_dl: torch.utils.data.DataLoader,
     rng: random.Random,
     scaler: GradScaler,
     model_avg: Optional[nn.Module] = None,
@@ -846,29 +830,29 @@ def train_one_epoch(
                         params.batch_idx_train,
                     )
 
-        if params.batch_idx_train % params.valid_interval == 0:
-            # Calculate validation loss in Rank 0
-            model.eval()
-            logging.info("Computing validation loss")
-            with torch.amp.autocast("cuda", dtype=dtype):
-                valid_info = compute_validation_loss(
-                    params=params,
-                    model=model,
-                    tokenizer=tokenizer,
-                    valid_dl=valid_dl,
-                    world_size=world_size,
-                )
-            logging.info(f"Epoch {params.cur_epoch}, validation: {valid_info}")
-            logging.info(
-                f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
-            )
+        # if params.batch_idx_train % params.valid_interval == 0:
+        #     # Calculate validation loss in Rank 0
+        #     model.eval()
+        #     logging.info("Computing validation loss")
+        #     with torch.amp.autocast("cuda", dtype=dtype):
+        #         valid_info = compute_validation_loss(
+        #             params=params,
+        #             model=model,
+        #             tokenizer=tokenizer,
+        #             valid_dl=valid_dl,
+        #             world_size=world_size,
+        #         )
+        #     logging.info(f"Epoch {params.cur_epoch}, validation: {valid_info}")
+        #     logging.info(
+        #         f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
+        #     )
 
-            if tb_writer is not None:
-                valid_info.write_summary(
-                    tb_writer, "train/valid_", params.batch_idx_train
-                )
+        #     if tb_writer is not None:
+        #         valid_info.write_summary(
+        #             tb_writer, "train/valid_", params.batch_idx_train
+        #         )
 
-            model.train()
+        #     model.train()
 
     loss_value = tot_loss["loss"] / tot_loss["samples"]
     params.train_loss = loss_value
@@ -937,7 +921,6 @@ def run(rank, world_size, args):
     logging.info("About to create model")
 
     model = get_model(params)
-    # model = load_F5_TTS_pretrained_checkpoint(model, params.pretrained_model_path)
     model = model.to(device)
 
     with open(f"{params.exp_dir}/model.txt", "w") as f:
@@ -1016,19 +999,26 @@ def run(rank, world_size, args):
 
     dataset = TtsDataModule(args)
     train_cuts = dataset.train_cuts()
-    valid_cuts = dataset.valid_cuts()
+    # valid_cuts = dataset.valid_cuts()
 
     train_cuts = filter_short_and_long_utterances(
         train_cuts, params.filter_min_duration, params.filter_max_duration
     )
-    valid_cuts = filter_short_and_long_utterances(
-        valid_cuts, params.filter_min_duration, params.filter_max_duration
-    )
+    # valid_cuts = filter_short_and_long_utterances(
+    #     valid_cuts, params.filter_min_duration, params.filter_max_duration
+    # )
 
     train_dl = dataset.train_dataloaders(
-        train_cuts, sampler_state_dict=sampler_state_dict
+        train_cuts,
+        sampler_state_dict=sampler_state_dict,
+        world_size=world_size,
+        rank=rank,
     )
-    valid_dl = dataset.valid_dataloaders(valid_cuts)
+    # valid_dl = dataset.valid_dataloaders(
+    #     valid_cuts,
+    #     world_size=world_size,
+    #     rank=rank,
+    # )
 
     if params.oom_check:
         scan_pessimistic_batches_for_oom(
@@ -1066,7 +1056,7 @@ def run(rank, world_size, args):
             optimizer=optimizer,
             scheduler=scheduler,
             train_dl=train_dl,
-            valid_dl=valid_dl,
+            # valid_dl=valid_dl,
             rng=rng,
             scaler=scaler,
             tb_writer=tb_writer,

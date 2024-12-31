@@ -125,7 +125,7 @@ def compute_fbank(args):
         config = MatchaFbankConfig(
             n_fft=1024,
             n_mels=100,
-            sampling_rate=24_000,
+            sampling_rate=24000,
             hop_length=256,
             win_length=1024,
             f_min=0,
