@@ -50,7 +50,7 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   # to $dl_dir/GigaSpeech3
   mkdir -p data/manifests
   if [ ! -e data/manifests/.gigaspeech3.done ]; then
-    lhotse prepare GigaSpeech3 -j $nj $dl_dir/GigaSpeech3 data/manifests
+    lhotse prepare gigaspeech3 -j $nj $dl_dir/GigaSpeech3 data/manifests
     touch data/manifests/.gigaspeech3.done
   fi
 fi

@@ -56,14 +56,15 @@ def validate_text(text: str) -> bool:
     return bool(re.match(pattern, text))
 
 
-def preprocess_giga_speech():
+def preprocess_gigaspeech3():
     src_dir = Path("data/manifests")
     output_dir = Path("data/fbank")
     output_dir.mkdir(exist_ok=True)
 
     dataset_parts = (
-        "ytnnews24-0",
         "test",
+        "ytnnews24-0",
+        "ytnnews24-1",
     )
 
     logging.info("Loading manifest")
@@ -95,7 +96,6 @@ def preprocess_giga_speech():
             assert validate_text(sup.text), sup.text
 
         # Create cut manifests.
-        logging.info(f"Processing {partition}")
         cut_set = CutSet.from_manifests(
             recordings=m["recordings"],
             supervisions=m["supervisions"],
@@ -108,7 +108,7 @@ def preprocess_giga_speech():
 def main():
     formatter = "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
     logging.basicConfig(format=formatter, level=logging.INFO)
-    preprocess_giga_speech()
+    preprocess_gigaspeech3()
 
 
 if __name__ == "__main__":
