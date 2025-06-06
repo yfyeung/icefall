@@ -1,17 +1,52 @@
 #!/usr/bin/env python3
 import logging
-import re
 from pathlib import Path
 
+import regex as re
 from lhotse import CutSet, SupervisionSegment
 from lhotse.recipes.utils import read_manifests_if_cached
 
 
+def is_arabic_only(sup: SupervisionSegment) -> bool:
+    text = sup.text
+    if not re.search(r"\p{Arabic}", text):
+        return False
+    patch_pattern = r"\u0640\u064B\u064D\u064E\u064F\u0650\u0651\u0652"
+    allowed_pattern = rf"[\p{{Arabic}}{patch_pattern}\p{{P}}\p{{S}}\p{{Z}}]+"
+    remaining = re.sub(allowed_pattern, "", text)
+    return len(remaining) == 0
+
+
 def normalize_text(
-    utt: str,
-    whitespace_pattern=re.compile(r"\s\s+"),
+    text: str,
 ) -> str:
-    return whitespace_pattern.sub(" ", punct_pattern.sub("", utt))
+    """
+    https://github.com/Natural-Language-Processing-Elm/open_universal_arabic_asr_leaderboard/blob/main/eval.py
+
+    Arabic text normalization:
+    1. Remove punctuation an symbols
+    2. Remove diacritics
+    """
+    # Remove punctuation and symbols
+    text = re.sub(r"[\p{P}\p{S}]", "", text)
+
+    # Remove diacritics
+    diacritics = r"[\u064B-\u0652]"  # Arabic diacritical marks (Fatha, Damma, etc.)
+    text = re.sub(diacritics, "", text)
+
+    # Normalize Hamzas and Maddas
+    text = re.sub("پ", "ب", text)
+    text = re.sub("ڤ", "ف", text)
+    text = re.sub(r"[آ]", "ا", text)
+    text = re.sub(r"[أإ]", "ا", text)
+    text = re.sub(r"[ؤ]", "و", text)
+    text = re.sub(r"[ئ]", "ي", text)
+    text = re.sub(r"[ء]", "", text)
+
+    # Normalize multiple whitespace characters into a single space
+    text = re.sub(r"\s\s+", " ", text)
+
+    return text.strip()
 
 
 def preprocess_dataoceanai_alg():
@@ -46,14 +81,13 @@ def preprocess_dataoceanai_alg():
             logging.info(f"{partition} already exists - skipping")
             continue
 
-        # Note this step makes the recipe different than LibriSpeech:
         # We must filter out some utterances and remove punctuation
-        # to be consistent with Kaldi.
-        logging.info("Filtering OOV utterances from supervisions")
-        # m["supervisions"] = m["supervisions"].filter(has_no_oov)
+        logging.info("Filtering utterances from supervisions")
+        m["supervisions"] = m["supervisions"].filter(is_arabic_only)
+
         logging.info(f"Normalizing text in {partition}")
-        # for sup in m["supervisions"]:
-        #   sup.text = normalize_text(sup.text)
+        for sup in m["supervisions"]:
+            sup.text = normalize_text(sup.text)
 
         # Create long-recording cut manifests.
         logging.info(f"Processing {partition}")
@@ -66,8 +100,6 @@ def preprocess_dataoceanai_alg():
         #  if partition not in ["DEV", "TEST"]:
         #      logging.info(
         #          f"Speed perturb for {partition} with factors 0.9 and 1.1 "
-        #          "(Perturbing may take 8 minutes and saving may"
-        #          " take 20 minutes)"
         #      )
         #      cut_set = (
         #          cut_set
@@ -77,6 +109,11 @@ def preprocess_dataoceanai_alg():
         #
         # Note: No need to perturb the training subset as not all of the
         # data is going to be used in the training.
+
+        cut_set = cut_set.trim_to_supervisions(
+            keep_overlapping=False, min_duration=None
+        )
+
         logging.info(f"Saving to {raw_cuts_path}")
         cut_set.to_file(raw_cuts_path)
 
