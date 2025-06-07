@@ -97,24 +97,22 @@ if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
   for vocab_size in ${vocab_sizes[@]}; do
     lang_dir=data/lang_bpe_${vocab_size}
     mkdir -p $lang_dir
-
-    if [ ! -f $lang_dir/transcript_words.txt ]; then
-      log "Generate data for BPE training"
-      files=$(
-        find "$dl_dir/dataoceanai-arabic/train-clean-100" -name "*.trans.txt"
-        find "$dl_dir/dataoceanai-arabic/train-clean-360" -name "*.trans.txt"
-        find "$dl_dir/dataoceanai-arabic/train-other-500" -name "*.trans.txt"
-      )
-      for f in ${files[@]}; do
-        cat $f | cut -d " " -f 2-
-      done > $lang_dir/transcript_words.txt
+ 
+    if [ ! -f $lang_dir/text ]; then
+      log "Generate text for BPE training"
+      gunzip -c data/fbank/dataoceanai-alg_cuts_train.jsonl.gz \
+        | jq -r .supervisions[0].text \
+        > $lang_dir/text
+      gunzip -c data/fbank/dataoceanai-alg_cuts_test.jsonl.gz \
+        | jq -r .supervisions[0].text \
+        >> $lang_dir/text
     fi
-
+ 
     if [ ! -f $lang_dir/bpe.model ]; then
       ./local/train_bpe_model.py \
         --lang-dir $lang_dir \
         --vocab-size $vocab_size \
-        --transcript $lang_dir/transcript_words.txt
+        --transcript $lang_dir/text
     fi
   done
 fi
