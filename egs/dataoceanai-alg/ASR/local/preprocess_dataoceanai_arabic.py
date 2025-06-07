@@ -100,15 +100,9 @@ def preprocess_dataoceanai_arabic():
         )
         # Run data augmentation that needs to be done in the
         # time domain.
-        #  if partition not in ["dev", "test"]:
-        #      logging.info(
-        #          f"Speed perturb for {partition} with factors 0.9 and 1.1 "
-        #      )
-        #      cut_set = (
-        #          cut_set
-        #          + cut_set.perturb_speed(0.9)
-        #          + cut_set.perturb_speed(1.1)
-        #      )
+        if partition not in ["dev", "test"]:
+            logging.info(f"Speed perturb for {partition} with factors 0.9 and 1.1 ")
+            cut_set = cut_set + cut_set.perturb_speed(0.9) + cut_set.perturb_speed(1.1)
 
         logging.info(f"Saving to {raw_cuts_path}")
         cut_set.to_file(raw_cuts_path)
