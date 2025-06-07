@@ -43,13 +43,16 @@ def normalize_text(
     text = re.sub(r"[ئ]", "ي", text)
     text = re.sub(r"[ء]", "", text)
 
+    # Remove Tatweel (Kashida, U+0640)
+    text = re.sub(r"\u0640", "", text)
+
     # Normalize multiple whitespace characters into a single space
     text = re.sub(r"\s\s+", " ", text)
 
     return text.strip()
 
 
-def preprocess_dataoceanai_alg():
+def preprocess_dataoceanai_arabic():
     src_dir = Path("data/manifests")
     output_dir = Path("data/fbank")
     output_dir.mkdir(exist_ok=True)
@@ -97,7 +100,7 @@ def preprocess_dataoceanai_alg():
         )
         # Run data augmentation that needs to be done in the
         # time domain.
-        #  if partition not in ["DEV", "TEST"]:
+        #  if partition not in ["dev", "test"]:
         #      logging.info(
         #          f"Speed perturb for {partition} with factors 0.9 and 1.1 "
         #      )
@@ -106,13 +109,6 @@ def preprocess_dataoceanai_alg():
         #          + cut_set.perturb_speed(0.9)
         #          + cut_set.perturb_speed(1.1)
         #      )
-        #
-        # Note: No need to perturb the training subset as not all of the
-        # data is going to be used in the training.
-
-        cut_set = cut_set.trim_to_supervisions(
-            keep_overlapping=False, min_duration=None
-        )
 
         logging.info(f"Saving to {raw_cuts_path}")
         cut_set.to_file(raw_cuts_path)
@@ -122,7 +118,7 @@ def main():
     formatter = "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
     logging.basicConfig(format=formatter, level=logging.INFO)
 
-    preprocess_dataoceanai_alg()
+    preprocess_dataoceanai_arabic()
 
 
 if __name__ == "__main__":
