@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import logging
 from pathlib import Path
 
@@ -21,11 +22,8 @@ def normalize_text(
     text: str,
 ) -> str:
     """
-    https://github.com/Natural-Language-Processing-Elm/open_universal_arabic_asr_leaderboard/blob/main/eval.py
-
     Arabic text normalization:
-    1. Remove punctuation an symbols
-    2. Remove diacritics
+    https://github.com/Natural-Language-Processing-Elm/open_universal_arabic_asr_leaderboard/blob/main/eval.py
     """
     # Remove punctuation and symbols
     text = re.sub(r"[\p{P}\p{S}]", "", text)
@@ -33,15 +31,6 @@ def normalize_text(
     # Remove diacritics
     diacritics = r"[\u064B-\u0652]"  # Arabic diacritical marks (Fatha, Damma, etc.)
     text = re.sub(diacritics, "", text)
-
-    # Normalize Hamzas and Maddas
-    text = re.sub("پ", "ب", text)
-    text = re.sub("ڤ", "ف", text)
-    text = re.sub(r"[آ]", "ا", text)
-    text = re.sub(r"[أإ]", "ا", text)
-    text = re.sub(r"[ؤ]", "و", text)
-    text = re.sub(r"[ئ]", "ي", text)
-    text = re.sub(r"[ء]", "", text)
 
     # Remove Tatweel (Kashida, U+0640)
     text = re.sub(r"\u0640", "", text)

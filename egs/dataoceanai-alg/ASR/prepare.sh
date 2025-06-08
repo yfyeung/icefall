@@ -6,9 +6,9 @@ export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 set -eou pipefail
 
 nj=15
-# run step 0 to step 5 by default
+# run step 0 to step 4 by default
 stage=0
-stop_stage=5
+stop_stage=4
 
 
 # We assume dl_dir (download dir) contains the following
