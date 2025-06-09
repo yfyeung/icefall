@@ -925,8 +925,8 @@ def main():
     logging.info(f"Device: {device}")
     logging.info(params)
 
-    lexicon = Lexicon(params.lang_dir)
-    max_token_id = max(lexicon.tokens)
+    lexicon = None  # Lexicon(params.lang_dir)
+    max_token_id = 500  # max(lexicon.tokens)
     num_classes = max_token_id + 1  # +1 for the blank
 
     params.vocab_size = num_classes
@@ -1212,7 +1212,7 @@ def main():
             HLG=HLG,
             H=H,
             bpe_model=bpe_model,
-            word_table=lexicon.word_table,
+            word_table=None  # lexicon.word_table,
             G=G,
             NNLM=NNLM,
             LODR_lm=LODR_lm,
