@@ -106,6 +106,7 @@ import k2
 import sentencepiece as spm
 import torch
 import torch.nn as nn
+from arabic_scoring import asr_text_post_processing
 from asr_datamodule import DataOceanAIArabicAsrDataModule
 from beam_search import (
     beam_search,
@@ -382,6 +383,17 @@ def get_parser():
     add_model_arguments(parser)
 
     return parser
+
+
+def post_processing(
+    results: List[Tuple[str, List[str], List[str]]],
+) -> List[Tuple[str, List[str], List[str]]]:
+    new_results = []
+    for key, ref, hyp in results:
+        new_ref = asr_text_post_processing(" ".join(ref)).split()
+        new_hyp = asr_text_post_processing(" ".join(hyp)).split()
+        new_results.append((key, new_ref, new_hyp))
+    return new_results
 
 
 def decode_one_batch(
@@ -732,6 +744,7 @@ def save_asr_output(
 
         recogs_filename = params.res_dir / f"recogs-{test_set_name}-{params.suffix}.txt"
 
+        results = post_processing(results)
         results = sorted(results)
         store_transcripts(filename=recogs_filename, texts=results)
 

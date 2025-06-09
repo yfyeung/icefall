@@ -21,21 +21,17 @@ def is_arabic_only(sup: SupervisionSegment) -> bool:
 def normalize_text(
     text: str,
 ) -> str:
-    """
-    Arabic text normalization:
-    https://github.com/Natural-Language-Processing-Elm/open_universal_arabic_asr_leaderboard/blob/main/eval.py
-    """
-    # Remove punctuation and symbols
-    text = re.sub(r"[\p{P}\p{S}]", "", text)
+    # remove punctuation and symbols
+    text = re.sub(r"[\p{p}\p{s}]", "", text)
 
-    # Remove diacritics
-    diacritics = r"[\u064B-\u0652]"  # Arabic diacritical marks (Fatha, Damma, etc.)
+    # remove diacritics
+    diacritics = r"[\u064b-\u0652]"  # arabic diacritical marks (fatha, damma, etc.)
     text = re.sub(diacritics, "", text)
 
-    # Remove Tatweel (Kashida, U+0640)
+    # remove tatweel (kashida, u+0640)
     text = re.sub(r"\u0640", "", text)
 
-    # Normalize multiple whitespace characters into a single space
+    # normalize multiple whitespace characters into a single space
     text = re.sub(r"\s\s+", " ", text)
 
     return text.strip()
