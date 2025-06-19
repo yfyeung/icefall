@@ -5,11 +5,13 @@ export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 set -eou pipefail
 
-nj=15
-# run step 0 to step 4 by default
+nj=8
+# run step 0 to step 6 by default
 stage=0
-stop_stage=4
+stop_stage=6
 
+start=0
+end=-1
 
 # We assume dl_dir (download dir) contains the following
 # directories and files.
@@ -53,7 +55,6 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   if [ ! -e data/manifests/.vi2000.done ]; then
     pip install git+https://github.com/yfyeung/lhotse.git@vi2000
     lhotse prepare vi2000 $dl_dir/vi2000/ data/manifests -j $nj
-    lhotse prepare vi2000 $dl_dir/vi2000/ data/manifests -j $nj
     touch data/manifests/.vi2000.done
   fi
 fi
@@ -67,16 +68,54 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
 fi
 
 if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
-  log "Stage 3: Compute fbank for vi2000"
+  log "Stage 3: Compute fbank for dev and test subsets of vi2000"
   mkdir -p data/fbank
-  if [ ! -e data/fbank/.vi2000.done ]; then
-    ./local/compute_fbank_vi2000.py
-    touch data/fbank/.vi2000.done
-  fi
+  for subset in test dev; do
+    log "Computing $subset subset."
+    if [ ! -e data/fbank/.vi2000.${subset}.done ]; then
+      ./local/compute_fbank_vi2000.py \
+        --subset ${subset} \
+        --fbank-dir data/fbank \
+        --num-workers $nj
+      touch data/fbank/.vi2000.${subset}.done
+    fi
+  done
 fi
 
+num_per_split=10000
 if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
-  log "Stage 4: Prepare BPE based lang"
+  log "Stage 4: Split train subset."
+  for subset in train; do
+    log "Spliting subset: $subset"
+    split_dir=data/fbank/vi2000_${subset}_split
+    mkdir -p $split_dir
+    if [ ! -e $split_dir/.split_completed ]; then
+      lhotse split-lazy data/fbank/vi2000_cuts_${subset}_raw.jsonl.gz $split_dir $num_per_split
+      touch $split_dir/.split_completed
+    fi
+  done
+fi
+
+if [ $stage -le 5 ] && [ $stop_stage -ge 5 ]; then
+  log "Stage 5: Compute fbank for train subset"
+  for subset in train; do
+    num_splits=$(find data/fbank/vi2000_${subset}_split -name "vi2000_cuts_${subset}_raw.*.jsonl.gz" | wc -l)
+    if [ ! -e data/fbank/.vi2000.${subset}.done ]; then
+      ./local/compute_fbank_vi2000.py \
+        --use-splits 1 \
+        --subset ${subset} \
+        --fbank-dir data/fbank \
+        --num-splits $num_splits \
+        --num-workers $nj \
+        --start $start \
+        --stop $end
+      touch data/fbank/.vi2000.${subset}.done
+    fi
+  done
+fi
+
+if [ $stage -le 6 ] && [ $stop_stage -ge 6 ]; then
+  log "Stage 6: Prepare BPE based lang"
 
   for vocab_size in ${vocab_sizes[@]}; do
     lang_dir=data/lang_bpe_${vocab_size}
@@ -84,7 +123,7 @@ if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
  
     if [ ! -f $lang_dir/text ]; then
       log "Generate text for BPE training"
-      gunzip -c data/fbank/vi2000_cuts_train.jsonl.gz \
+      gunzip -c data/fbank/vi2000_cuts_train_raw.jsonl.gz \
         | jq -r .supervisions[0].text \
         > $lang_dir/text
     fi
