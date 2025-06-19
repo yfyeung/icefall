@@ -9,7 +9,7 @@ from lhotse import CutSet, SupervisionSegment
 from lhotse.recipes.utils import read_manifests_if_cached
 
 VN_EN_RE = re.compile(
-    r"^(?:[a-zđ](?:[\u0300-\u0303\u0306\u0309\u031b\u0323])*|\s)+$",
+    r"(?i)^(?:[a-zđ](?:[\u0300-\u0303\u0306\u0309\u031b\u0323])*|\s)+$",
     re.IGNORECASE,
 )
 PUNC_SYM_RE = re.compile(r"[\p{P}\p{N}]+", re.VERSION1)
