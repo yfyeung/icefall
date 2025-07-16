@@ -27,12 +27,12 @@ from typing import Any, Dict, Optional
 
 import lhotse
 import torch
+from dataset import K2SpeechRecognitionDataset
 from lhotse import CutSet, Fbank, FbankConfig, load_manifest, load_manifest_lazy
 from lhotse.dataset import (
     CutConcatenate,
     CutMix,
     DynamicBucketingSampler,
-    K2SpeechRecognitionDataset,
     PrecomputedFeatures,
     SimpleCutSampler,
     SpecAugment,
