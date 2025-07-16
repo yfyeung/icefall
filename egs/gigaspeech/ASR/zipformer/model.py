@@ -25,7 +25,7 @@ from encoder_interface import EncoderInterface
 from lhotse.dataset import SpecAugment
 from scaling import ScaledLinear
 
-from icefall.utils import add_sos, make_pad_mask, time_warp, torch_autocast
+from icefall.utils import add_eos, add_sos, make_pad_mask, time_warp, torch_autocast
 
 
 class AsrModel(nn.Module):
@@ -256,6 +256,8 @@ class AsrModel(nn.Module):
         """
         # Now for the decoder, i.e., the prediction network
         blank_id = self.decoder.blank_id
+        y = add_eos(y, eos_id=1)
+        y_lens += 1
         sos_y = add_sos(y, sos_id=blank_id)
 
         # sos_y_padded: [B, S + 1], start with SOS.
