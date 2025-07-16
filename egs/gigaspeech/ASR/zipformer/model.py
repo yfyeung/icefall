@@ -268,9 +268,8 @@ class AsrModel(nn.Module):
 
         # Note: y does not start with SOS
         # y_padded : [B, S]
-        y_padded = y.pad(mode="constant", padding_value=0)
+        y_padded = y.pad(mode="constant", padding_value=0).to(torch.int64)
 
-        y_padded = y_padded.to(torch.int64)
         boundary = torch.zeros(
             (encoder_out.size(0), 4),
             dtype=torch.int64,
