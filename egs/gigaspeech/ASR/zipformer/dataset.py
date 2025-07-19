@@ -112,7 +112,7 @@ class K2SpeechRecognitionDataset(torch.utils.data.Dataset):
 
         # Get a tensor with batched feature matrices, shape (B, T, F)
         # Collation performs auto-padding, if necessary.
-        input_tpl = self.input_strategy(cuts)
+        input_tpl = self.input_strategy(cuts, pad_direction="left")
         if len(input_tpl) == 3:
             # An input strategy with fault tolerant audio reading mode.
             # "cuts" may be a subset of the original "cuts" variable,
@@ -124,7 +124,9 @@ class K2SpeechRecognitionDataset(torch.utils.data.Dataset):
         # Get a dict of tensors that encode the positional information about supervisions
         # in the batch of feature matrices. The tensors are named "sequence_idx",
         # "start_frame/sample" and "num_frames/samples".
-        supervision_intervals = self.input_strategy.supervision_intervals(cuts)
+        supervision_intervals = self.input_strategy.supervision_intervals(
+            cuts, pad_direction="left"
+        )
 
         # Apply all available transforms on the inputs, i.e. either audio or features.
         # This could be feature extraction, global MVN, SpecAugment, etc.

@@ -164,7 +164,7 @@ class GigaSpeechAsrDataModule:
         group.add_argument(
             "--num-workers",
             type=int,
-            default=2,
+            default=0,
             help="The number of training dataloader workers that "
             "collect the batches.",
         )
