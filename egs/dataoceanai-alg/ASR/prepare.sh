@@ -68,8 +68,8 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   mkdir -p data/manifests
   if [ ! -e data/manifests/.dataoceanai-arabic.done ]; then
     pip install git+https://github.com/yfyeung/lhotse.git@textgrid
-    lhotse prepare textgrids dataoceanai-alg $dl_dir/dataoceanai-arabic/audio $dl_dir/dataoceanai-arabic/textgrid/test data/manifests --language Algeriain -j $nj
-    lhotse prepare textgrids dataoceanai-alg $dl_dir/dataoceanai-arabic/audio $dl_dir/dataoceanai-arabic/textgrid/train data/manifests --language Algeriain -j $nj
+    lhotse prepare textgrids dataoceanai-alg $dl_dir/dataoceanai-arabic/audio $dl_dir/dataoceanai-arabic/textgrid/test data/manifests --language Algerian -j $nj
+    lhotse prepare textgrids dataoceanai-alg $dl_dir/dataoceanai-arabic/audio $dl_dir/dataoceanai-arabic/textgrid/train data/manifests --language Algerian -j $nj
     touch data/manifests/.dataoceanai-arabic.done
   fi
 fi
