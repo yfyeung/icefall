@@ -22,7 +22,7 @@ def compute_fbank_dataoceanai_arabic():
     # number of seconds in a batch
     batch_duration = 1000
 
-    subsets = ("train", "test")
+    subsets = ("train", "test", "test-cooking", "test-handcrafting")
     prefix = "dataoceanai-alg"
 
     device = torch.device("cpu")

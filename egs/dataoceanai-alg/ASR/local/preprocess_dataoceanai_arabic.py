@@ -42,7 +42,7 @@ def preprocess_dataoceanai_arabic():
     output_dir = Path("data/fbank")
     output_dir.mkdir(exist_ok=True)
 
-    dataset_parts = ("train", "test")
+    dataset_parts = ("train", "test", "test-cooking", "test-handcrafting")
 
     logging.info("Loading manifest")
     prefix = "dataoceanai-alg"
