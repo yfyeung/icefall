@@ -421,3 +421,17 @@ class DataOceanAIArabicAsrDataModule:
         return load_manifest_lazy(
             self.args.manifest_dir / "dataoceanai-alg_cuts_test.jsonl.gz"
         )
+
+    @lru_cache()
+    def test_cooking_cuts(self) -> CutSet:
+        logging.info("About to get test-cooking cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "dataoceanai-alg_cuts_test-cooking.jsonl.gz"
+        )
+
+    @lru_cache()
+    def test_handcrafting_cuts(self) -> CutSet:
+        logging.info("About to get test-handcrafting cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "dataoceanai-alg_cuts_test-handcrafting.jsonl.gz"
+        )

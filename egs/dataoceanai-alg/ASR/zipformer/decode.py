@@ -1056,8 +1056,6 @@ def main():
     args.return_cuts = True
     dataoceanai_arabic = DataOceanAIArabicAsrDataModule(args)
 
-    test_cuts = dataoceanai_arabic.test_cuts()
-
     def remove_short_and_long_utt(c: Cut):
         # Keep only utterances with duration between 1 second and 20 seconds
         #
@@ -1095,15 +1093,25 @@ def main():
 
         return True
 
+    test_cuts = dataoceanai_arabic.test_cuts()
+    test_cooking_cuts = dataoceanai_arabic.test_cooking_cuts()
+    test_handcrafting_cuts = dataoceanai_arabic.test_handcrafting_cuts()
+
     test_cuts = test_cuts.filter(remove_short_and_long_utt)
 
     test_dl = dataoceanai_arabic.test_dataloaders(test_cuts)
+    test_cooking_dl = dataoceanai_arabic.test_dataloaders(test_cooking_cuts)
+    test_handcrafting_dl = dataoceanai_arabic.test_dataloaders(test_handcrafting_cuts)
 
     test_sets = [
         "test",
+        "test-cooking",
+        "test-handcrafting",
     ]
     test_dl = [
         test_dl,
+        test_cooking_dl,
+        test_handcrafting_dl,
     ]
 
     for test_set, test_dl in zip(test_sets, test_dl):
