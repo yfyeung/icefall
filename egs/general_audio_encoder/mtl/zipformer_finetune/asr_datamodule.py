@@ -179,7 +179,7 @@ class LibriSpeechAsrDataModule:
         group.add_argument(
             "--num-workers",
             type=int,
-            default=2,
+            default=16,
             help="The number of training dataloader workers that "
             "collect the batches.",
         )
@@ -364,8 +364,10 @@ class LibriSpeechAsrDataModule:
             train,
             sampler=train_sampler,
             batch_size=None,
-            num_workers=self.args.num_workers,
-            persistent_workers=False,
+            num_workers=32,
+            persistent_workers=True,
+            pin_memory=True,
+            prefetch_factor=16,
             worker_init_fn=worker_init_fn,
         )
 
@@ -402,7 +404,7 @@ class LibriSpeechAsrDataModule:
             validate,
             sampler=valid_sampler,
             batch_size=None,
-            num_workers=2,
+            num_workers=8,
             persistent_workers=False,
         )
 
@@ -426,7 +428,7 @@ class LibriSpeechAsrDataModule:
             test,
             batch_size=None,
             sampler=sampler,
-            num_workers=self.args.num_workers,
+            num_workers=8,
         )
         return test_dl
 

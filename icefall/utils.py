@@ -38,11 +38,33 @@ import sentencepiece as spm
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from packaging import version
 from torch.utils.tensorboard import SummaryWriter
 
 from icefall.checkpoint import average_checkpoints
 
 Pathlike = Union[str, Path]
+
+TORCH_VERSION = version.parse(torch.__version__)
+
+
+def create_grad_scaler(device="cuda", **kwargs):
+    """
+    Creates a GradScaler compatible with both torch < 2.3.0 and >= 2.3.0.
+    Accepts all kwargs like: enabled, init_scale, growth_factor, etc.
+
+    /icefall/egs/librispeech/ASR/./zipformer/train.py:1451: FutureWarning:
+    `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use
+    `torch.amp.GradScaler('cuda', args...)` instead.
+    """
+    if TORCH_VERSION >= version.parse("2.3.0"):
+        from torch.amp import GradScaler
+
+        return GradScaler(device=device, **kwargs)
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            return torch.cuda.amp.GradScaler(**kwargs)
 
 
 # Pytorch issue: https://github.com/pytorch/pytorch/issues/47379
