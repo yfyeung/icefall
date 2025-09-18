@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 export PYTHONPATH=/root/icefall:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=1,2
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # data related
 use_librispeech=1
@@ -21,17 +21,18 @@ post_output_ds=1
 # freeze_encoder_steps=2000
 freeze_encoder=0
 freeze_encoder_steps=-1
-encoder_lr_scale=0.05
+encoder_lr_scale=0.02222
 
 md=1000
 
-exp_dir=zipformer_finetune/exp-finetune-ctc
+exp_dir=zipformer_finetune/exp_ft_ls100_letter_ctc_ws4_md1000_lr1e-3_bf16
 
 echo $exp_dir
 
-torchrun --nproc_per_node=2 --master_port=19290 \
+if false; then
+torchrun --nproc_per_node=4 --master_port=19290 \
   zipformer_finetune/finetune_asr.py \
-    --num-epochs 100 \
+    --num-epochs 200 \
     --use-fp16 0 \
     --use-bf16 1 \
     --start-epoch 1 \
@@ -55,12 +56,12 @@ torchrun --nproc_per_node=2 --master_port=19290 \
     --post-encoder-downsampling-factor $post_output_ds \
     --on-the-fly-feats 1 \
     --max-duration $md
+fi
 
-exit
-
+if true; then
 for m in ctc-decoding; do
-    for epoch in 30; do
-        for avg in $(seq $((epoch-1)) -1 1); do
+    for epoch in $(seq 200 -5 50); do
+        for avg in $(seq $((epoch-1)) -5 5); do
             python zipformer_finetune/decode_ctc.py \
                 --epoch $epoch \
                 --avg $avg \
@@ -83,9 +84,6 @@ for m in ctc-decoding; do
         done
     done
 done
+fi
 
-# rm $exp_dir/*.pt
-
-echo "Done"
-
-for i in {1..2}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
+for i in {0..3}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
