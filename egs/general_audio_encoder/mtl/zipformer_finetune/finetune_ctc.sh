@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 export PYTHONPATH=/root/icefall:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+# export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=$1
 
 # data related
 use_librispeech=1
@@ -17,15 +18,13 @@ finetune_ckpt=/private_data2/327M-uni-v2-batch-mix-0.3-p-n0.5/iter-500000-avg-4.
 output_ds=1
 post_output_ds=1
 
-# freeze_encoder=0
-# freeze_encoder_steps=2000
 freeze_encoder=0
 freeze_encoder_steps=-1
 encoder_lr_scale=0.02222
 
 md=1000
 
-exp_dir=zipformer_finetune/exp_ft_ls100_letter_ctc_ws4_md1000_lr1e-3_bf16
+exp_dir=zipformer_finetune/exp_ft_ls100_char_ctc_ws4_md1000_lr1e-3_bf16
 
 echo $exp_dir
 
@@ -60,8 +59,10 @@ fi
 
 if true; then
 for m in ctc-decoding; do
-    for epoch in $(seq 200 -5 50); do
-        for avg in $(seq $((epoch-1)) -5 5); do
+    # for epoch in $(seq 100 -5 40); do
+    for epoch in $(seq 70 -1 40); do
+        for avg in $(seq $((epoch-10)) -1 30); do
+        # for avg in $(seq $((epoch-1)) -5 5); do
             python zipformer_finetune/decode_ctc.py \
                 --epoch $epoch \
                 --avg $avg \
@@ -80,10 +81,10 @@ for m in ctc-decoding; do
                 --on-the-fly-feats 1 \
                 --exp-dir $exp_dir \
                 --decoding-method $m \
-                --max-duration 1000
+                --max-duration 2000
         done
     done
 done
 fi
 
-for i in {0..3}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
+python ~/busygpu/run.py &
