@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES="0"
+export CUDA_VISIBLE_DEVICES=0
 export MASTER_PORT=16693
 
 ./zipformer/train.py \

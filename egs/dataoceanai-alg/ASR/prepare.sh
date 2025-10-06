@@ -102,12 +102,9 @@ if [ $stage -le 4 ] && [ $stop_stage -ge 4 ]; then
  
     if [ ! -f $lang_dir/text ]; then
       log "Generate text for BPE training"
-      gunzip -c data/fbank/dataoceanai-alg_cuts_train.jsonl.gz \
+      gunzip -c data/fbank/dataoceanai-alg_cuts_all.jsonl.gz \
         | jq -r .supervisions[0].text \
         > $lang_dir/text
-      gunzip -c data/fbank/dataoceanai-alg_cuts_test.jsonl.gz \
-        | jq -r .supervisions[0].text \
-        >> $lang_dir/text
     fi
  
     if [ ! -f $lang_dir/bpe.model ]; then
