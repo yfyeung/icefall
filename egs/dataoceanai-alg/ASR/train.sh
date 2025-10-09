@@ -1,5 +1,5 @@
+export PYTHONPATH=`pwd`/../../../../icefall
 export CUDA_VISIBLE_DEVICES=0
-export MASTER_PORT=16693
 
 ./zipformer/train.py \
   --world-size 1 \
