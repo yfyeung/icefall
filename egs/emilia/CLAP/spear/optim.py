@@ -436,7 +436,7 @@ class ScaledAdam(BatchedOptimizer):
             else:
                 tot_sumsq += ((grad * state["param_rms"]) ** 2).sum()
 
-        if tot_sumsq == 0.0: # for freezing parameters
+        if tot_sumsq == 0.0:  # for freezing parameters
             return 1.0
 
         tot_norm = tot_sumsq.sqrt()

@@ -82,7 +82,7 @@ import k2
 import torch
 import torch.nn as nn
 from asr_datamodule import LibriSpeechAsrDataModule
-from finetune_asr import add_model_arguments, get_model, get_params
+from finetune import add_model_arguments, get_model, get_params
 
 from icefall.char_graph_compiler import CharCtcTrainingGraphCompiler
 from icefall.checkpoint import (
@@ -323,20 +323,20 @@ def decode_one_batch(
         device = H.device
 
     feature = batch["inputs"]
-    
+
     supervisions = batch["supervisions"]
     cuts = supervisions["cut"]
     feature_lens = supervisions["num_frames"].to(device)
     # at entry, feature is (N, T, C)
     assert feature.ndim == 3
     feature = feature.to(device)
-    
+
     encoder_out, encoder_out_lens = model.forward_encoder(feature, feature_lens)
     ctc_output = model.ctc_output(encoder_out)
 
     start_frame = torch.tensor([0] * encoder_out.size(0))
     num_frames = encoder_out_lens.cpu() + 1
-    
+
     supervision_segments = torch.stack(
         (
             supervisions["sequence_idx"],
@@ -781,7 +781,7 @@ def main():
     # we need cut ids to display recognition results.
     args.return_cuts = True
     librispeech = LibriSpeechAsrDataModule(args)
-    
+
     test_clean_cuts = librispeech.test_clean_cuts()
     test_other_cuts = librispeech.test_other_cuts()
 

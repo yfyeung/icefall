@@ -17,28 +17,33 @@
 # limitations under the License.
 
 import copy
+import logging
 import math
+import random
 import warnings
 from typing import List, Optional, Tuple, Union
-import logging
+
 import torch
-import random
 from encoder_interface import EncoderInterface
 from scaling import (
+    Identity,  # more friendly to backward hooks than nn.Identity(), for diagnostic reasons.
+)
+from scaling import (
+    ScaledLinear,  # not as in other dirs.. just scales down initial parameter values.
+)
+from scaling import (
+    ActivationDropoutAndLinear,
     Balancer,
     BiasNorm,
-    Dropout2,
     ChunkCausalDepthwiseConv1d,
-    ActivationDropoutAndLinear,
-    ScaledLinear,  # not as in other dirs.. just scales down initial parameter values.
+    Dropout2,
+    FloatLike,
+    ScheduledFloat,
     Whiten,
-    Identity,  # more friendly to backward hooks than nn.Identity(), for diagnostic reasons.
+    convert_num_channels,
+    limit_param_value,
     penalize_abs_values_gt,
     softmax,
-    ScheduledFloat,
-    FloatLike,
-    limit_param_value,
-    convert_num_channels,
 )
 from torch import Tensor, nn
 
@@ -198,7 +203,6 @@ class Zipformer2(EncoderInterface):
             )
         else:
             self.downsample_output = None
-            
 
     def get_feature_masks(self, x: Tensor) -> Union[List[float], List[Tensor]]:
         """
@@ -349,7 +353,7 @@ class Zipformer2(EncoderInterface):
         # from different pieces of 'outputs', taking each dimension from the
         # most recent output that has it present.
         x = self._get_full_dim_output(outputs)
-        
+
         if self.output_downsampling_factor >= 2:
             x = self.downsample_output(x)
             # class Downsample has this rounding behavior..

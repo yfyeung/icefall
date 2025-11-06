@@ -19,9 +19,9 @@
 import argparse
 import inspect
 import logging
+import pickle
 from functools import lru_cache
 from pathlib import Path
-import pickle
 from typing import Any, Dict, Optional
 
 import torch
@@ -220,23 +220,16 @@ class LibriSpeechAsrDataModule:
             "--drop-features",
             type=str2bool,
             default=False,
-            help="If drop the pre-computed features"
+            help="If drop the pre-computed features",
         )
-        
+
         group.add_argument(
             "--return-audio",
             type=str2bool,
             default=False,
-            help="Return audio while collating batch"
+            help="Return audio while collating batch",
         )
-        
-        group.add_argument(
-            "--use-librispeech",
-            type=str2bool,
-            default=False,
-            help="If use librispeech as the training set.",
-        )
-        
+
         group.add_argument(
             "--num-mel-bins",
             type=int,
@@ -247,6 +240,8 @@ class LibriSpeechAsrDataModule:
         self,
         cuts_train: CutSet,
         sampler_state_dict: Optional[Dict[str, Any]] = None,
+        world_size: int = 1,
+        rank: int = 0,
     ) -> DataLoader:
         """
         Args:
@@ -327,7 +322,9 @@ class LibriSpeechAsrDataModule:
             # Drop feats to be on the safe side.
             train = K2SpeechRecognitionDataset(
                 cut_transforms=transforms,
-                input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins))),
+                input_strategy=OnTheFlyFeatures(
+                    Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins))
+                ),
                 input_transforms=input_transforms,
                 return_cuts=self.args.return_cuts,
             )
@@ -340,6 +337,8 @@ class LibriSpeechAsrDataModule:
                 shuffle=self.args.shuffle,
                 num_buckets=self.args.num_buckets,
                 drop_last=self.args.drop_last,
+                world_size=world_size,
+                rank=rank,
             )
         else:
             logging.info("Using SimpleCutSampler.")
@@ -348,6 +347,8 @@ class LibriSpeechAsrDataModule:
                 max_duration=self.args.max_duration,
                 shuffle=self.args.shuffle,
                 drop_last=self.args.drop_last,
+                world_size=world_size,
+                rank=rank,
             )
         logging.info("About to create train dataloader")
 
@@ -364,7 +365,7 @@ class LibriSpeechAsrDataModule:
             train,
             sampler=train_sampler,
             batch_size=None,
-            num_workers=32,
+            num_workers=8,
             persistent_workers=True,
             pin_memory=True,
             prefetch_factor=16,
@@ -373,7 +374,12 @@ class LibriSpeechAsrDataModule:
 
         return train_dl
 
-    def valid_dataloaders(self, cuts_valid: CutSet) -> DataLoader:
+    def valid_dataloaders(
+        self,
+        cuts_valid: CutSet,
+        world_size: int = 1,
+        rank: int = 0,
+    ) -> DataLoader:
         transforms = []
         if self.args.concatenate_cuts:
             transforms = [
@@ -386,7 +392,9 @@ class LibriSpeechAsrDataModule:
         if self.args.on_the_fly_feats:
             validate = K2SpeechRecognitionDataset(
                 cut_transforms=transforms,
-                input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins))),
+                input_strategy=OnTheFlyFeatures(
+                    Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins))
+                ),
                 return_cuts=self.args.return_cuts,
             )
         else:
@@ -398,6 +406,8 @@ class LibriSpeechAsrDataModule:
             cuts_valid,
             max_duration=self.args.max_duration,
             shuffle=False,
+            world_size=world_size,
+            rank=rank,
         )
         logging.info("About to create dev dataloader")
         valid_dl = DataLoader(
@@ -413,7 +423,9 @@ class LibriSpeechAsrDataModule:
     def test_dataloaders(self, cuts: CutSet) -> DataLoader:
         logging.debug("About to create test dataset")
         test = K2SpeechRecognitionDataset(
-            input_strategy=OnTheFlyFeatures(Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins)))
+            input_strategy=OnTheFlyFeatures(
+                Fbank(FbankConfig(num_mel_bins=self.args.num_mel_bins))
+            )
             if self.args.on_the_fly_feats
             else eval(self.args.input_strategy)(),
             return_cuts=self.args.return_cuts,
@@ -492,13 +504,6 @@ class LibriSpeechAsrDataModule:
         )
 
     @lru_cache()
-    def dev_other_cuts_KD(self) -> CutSet:
-        logging.info("About to get dev-other cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-other-with-3-embeddings.jsonl.gz"
-        )
-
-    @lru_cache()
     def test_clean_cuts(self) -> CutSet:
         logging.info("About to get test-clean cuts")
         return load_manifest_lazy(
@@ -511,5 +516,3 @@ class LibriSpeechAsrDataModule:
         return load_manifest_lazy(
             self.args.manifest_dir / "librispeech_cuts_test-other.jsonl.gz"
         )
-        
-    

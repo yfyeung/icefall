@@ -1,16 +1,17 @@
-import logging
 import collections
+import logging
 import os
 import re
 from typing import List, Tuple
-from lhotse.array import Array, TemporalArray
 
 import torch
 import torch.distributed as dist
+from lhotse.array import Array, TemporalArray
 from torch.utils.tensorboard import SummaryWriter
 
-from icefall.utils import tokenize_by_CJK_char
 from icefall.byte_utils import byte_encode
+from icefall.utils import tokenize_by_CJK_char
+
 
 def _normalize_chinese_text(text):
     # 去除所有标点符号
@@ -20,11 +21,13 @@ def _normalize_chinese_text(text):
     text = text.upper()
     return text
 
+
 def normalize_chinese_text(c):
     text = c.supervisions[0].text
     text = _normalize_chinese_text(text)
     c.supervisions[0].text = text
     return c
+
 
 def _normalize_english_text(text):
     # 只保留字母、数字、空格和单引号，去掉其他标点符号
@@ -33,11 +36,13 @@ def _normalize_english_text(text):
     text = text.upper()
     return text
 
+
 def normalize_english_text(c):
     text = c.supervisions[0].text
     text = _normalize_english_text(text)
     c.supervisions[0].text = text
     return c
+
 
 def remove_non_alphabetic(text: str, strict: bool = True) -> str:
     # Recommend to set strict to False
@@ -50,11 +55,13 @@ def remove_non_alphabetic(text: str, strict: bool = True) -> str:
         # only keeps space
         return re.sub(r"[^a-zA-Z\s]+", "", text)
 
+
 def map_zh(c):
     text = c.supervisions[0].text
     text = byte_encode(tokenize_by_CJK_char(text))
     c.supervisions[0].text = text
     return c
+
 
 def upper_only_alpha(c):
     text = c.supervisions[0].text
@@ -62,53 +69,77 @@ def upper_only_alpha(c):
     c.supervisions[0].text = text
     return c
 
-def setup_distributed():
-    """Setup distributed training environment."""
-    dist.init_process_group(
-        backend="nccl",
-        init_method="env://",
-    )
-    rank = int(os.environ["LOCAL_RANK"])
-    torch.cuda.set_device(rank)
-    return rank
 
 def add_dummy_text(c):
     if c.supervisions[0].text is None:
-        c.supervisions[0].text = "Dummy text added as a place holder. Please ignore this if possible."
+        c.supervisions[
+            0
+        ].text = "Dummy text added as a place holder. Please ignore this if possible."
     return c
+
 
 def _add_dummy_embeddings_and_taskIDs(task_ID: int, c):
     whisper_embedding_dict = {
-        'array': {'storage_type': 'numpy_hdf5', 'storage_path': 'data/dummy_embeddings/dummy_whisper_embedding_1510.h5', 'storage_key': 'dummy_whisper_embedding_1510', 'shape': [1510, 1280]}, 'temporal_dim': 0, 'frame_shift': 0.02, 'start': 0
+        "array": {
+            "storage_type": "numpy_hdf5",
+            "storage_path": "data/dummy_embeddings/dummy_whisper_embedding_1510.h5",
+            "storage_key": "dummy_whisper_embedding_1510",
+            "shape": [1510, 1280],
+        },
+        "temporal_dim": 0,
+        "frame_shift": 0.02,
+        "start": 0,
     }
     whisper_dummy_embedding = TemporalArray.from_dict(whisper_embedding_dict)
-    
+
     whisper_cb_indexes_dict = {
-        'array': {'storage_type': 'numpy_hdf5', 'storage_path': 'data/dummy_embeddings/dummy_whisper_codebook_indexes_1510.h5', 'storage_key': 'dummy_whisper_codebook_indexes_1510', 'shape': [1510, 16]}, 'temporal_dim': 0, 'frame_shift': 0.02, 'start': 0
+        "array": {
+            "storage_type": "numpy_hdf5",
+            "storage_path": "data/dummy_embeddings/dummy_whisper_codebook_indexes_1510.h5",
+            "storage_key": "dummy_whisper_codebook_indexes_1510",
+            "shape": [1510, 16],
+        },
+        "temporal_dim": 0,
+        "frame_shift": 0.02,
+        "start": 0,
     }
     whisper_cb_indexes = TemporalArray.from_dict(whisper_cb_indexes_dict)
-    
+
     beats_embedding_dict = {
-        'storage_type': 'numpy_hdf5', 'storage_path': 'data/dummy_embeddings/dummy_beats_embedding.h5', 'storage_key': 'dummy_beats_embedding', 'shape': [527]
+        "storage_type": "numpy_hdf5",
+        "storage_path": "data/dummy_embeddings/dummy_beats_embedding.h5",
+        "storage_key": "dummy_beats_embedding",
+        "shape": [527],
     }
     beats_dummy_embedding = Array.from_dict(beats_embedding_dict)
-    
+
     ecapa_embedding_dict = {
-        'storage_type': 'numpy_hdf5', 'storage_path': 'dummy_ecapa_embedding.h5', 'storage_key': 'dummy_ecapa_embedding', 'shape': [1, 192]
+        "storage_type": "numpy_hdf5",
+        "storage_path": "dummy_ecapa_embedding.h5",
+        "storage_key": "dummy_ecapa_embedding",
+        "shape": [1, 192],
     }
     ecapa_dummy_embedding = Array.from_dict(ecapa_embedding_dict)
-    
+
     mert_embedding_dict = {
-        'array': {'storage_type': 'numpy_hdf5', 'storage_path': 'data/dummy_embeddings/dummy_mert_embedding_2260.h5', 'storage_key': 'dummy_mert_embedding', 'shape': [2260, 1024]}, 'temporal_dim': 0, 'frame_shift': 0.013333333333333334, 'start': 0
+        "array": {
+            "storage_type": "numpy_hdf5",
+            "storage_path": "data/dummy_embeddings/dummy_mert_embedding_2260.h5",
+            "storage_key": "dummy_mert_embedding",
+            "shape": [2260, 1024],
+        },
+        "temporal_dim": 0,
+        "frame_shift": 0.013333333333333334,
+        "start": 0,
     }
     mert_dummy_embedding = TemporalArray.from_dict(mert_embedding_dict)
-    
+
     def add_embeddings(c):
         # if not c.has_custom("whisper_embedding"):
         #     c.whisper_embedding = whisper_dummy_embedding
         if not c.has_custom("codebook_indexes"):
             c.codebook_indexes = whisper_cb_indexes
-        
+
         # if not c.has_custom("ecapa_embedding"):
         #     c.ecapa_embedding = ecapa_dummy_embedding
         if not c.has_custom("beats_embedding"):
@@ -116,49 +147,49 @@ def _add_dummy_embeddings_and_taskIDs(task_ID: int, c):
         # if not c.supervisions[0].has_custom("audio_event"):
         #     c.supervisions[0].audio_event = "0"
         if c.supervisions[0].text is None:
-            c.supervisions[0].text = "Dummy text added as a place holder. Please ignore this if possible."
+            c.supervisions[
+                0
+            ].text = (
+                "Dummy text added as a place holder. Please ignore this if possible."
+            )
         if task_ID is not None:
             c.task_id = task_ID
         return c
-    
+
     c = add_embeddings(c)
     return c
+
 
 def _add_task_id(task_id, c):
     c.task_id = task_id
     return c
 
+
 def _add_language_id(lid, c):
     c.language_id = lid
     return c
 
-def compare_model(state_dict1, state_dict2):
-    assert state_dict1.keys() == state_dict2.keys()
-    for key in state_dict1.keys():
-        if torch.all(state_dict1[key] == state_dict2[key]):
-            logging.info(f"Param: {key} is the same as new state dict")
-        else:
-            logging.info(f"Param: {key} is updated from new state dict")
+
 
 def _save_checkpoint_with_global_batch_idx(
     params,
     model,
-    optimizer = None,
-    sampler = None,
-    scheduler = None,
-    scaler = None,
-    model_avg = None,
+    optimizer=None,
+    sampler=None,
+    scheduler=None,
+    scaler=None,
+    model_avg=None,
     rank: int = 0,
 ):
     # only active when rank==0
     if rank != 0:
         return
-    
+
     if isinstance(model, DDP):
         model = model.module
     else:
         model = model
-        
+
     checkpoint = {
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict() if optimizer is not None else None,
@@ -166,7 +197,7 @@ def _save_checkpoint_with_global_batch_idx(
         "grad_scaler": scaler.state_dict() if scaler is not None else None,
         "sampler": sampler.state_dict() if sampler is not None else None,
     }
-    
+
     if model_avg is not None:
         checkpoint["model_avg"] = model_avg.to(torch.float32).state_dict()
 
@@ -175,9 +206,9 @@ def _save_checkpoint_with_global_batch_idx(
             assert k not in checkpoint
             checkpoint[k] = v
     output_path = params.exp_dir / f"checkpoint-{params.batch_idx_train}.pt"
-        
+
     if params.save_with_client:
-        output_path = "brainllm:s3://yangxiaoyu/" + str(output_path) 
+        output_path = "brainllm:s3://yangxiaoyu/" + str(output_path)
         logging.info(f"Saving checkpoint to {output_path}")
         with io.BytesIO() as f:
             torch.save(checkpoint, f)
@@ -188,15 +219,16 @@ def _save_checkpoint_with_global_batch_idx(
         logging.info(f"Saving checkpoint to {output_path}")
         torch.save(checkpoint, output_path)
 
+
 def _save_checkpoint(
     filename,
     model,
-    model_avg = None,
-    params = None,
-    optimizer = None,
-    scheduler = None,
-    scaler = None,
-    sampler = None,
+    model_avg=None,
+    params=None,
+    optimizer=None,
+    scheduler=None,
+    scaler=None,
+    sampler=None,
     rank: int = 0,
 ):
     if rank != 0:
@@ -222,7 +254,7 @@ def _save_checkpoint(
         for k, v in params.items():
             assert k not in checkpoint
             checkpoint[k] = v
-            
+
     if "s3://" in filename:
         with io.BytesIO() as f:
             torch.save(checkpoint, f)
@@ -231,6 +263,7 @@ def _save_checkpoint(
         logging.info(f"Finish saving checkpoint to {filename}")
     else:
         torch.save(checkpoint, filename)
+
 
 class MetricsTracker(collections.defaultdict):
     def __init__(self, normalize: bool = True):
@@ -294,12 +327,12 @@ class MetricsTracker(collections.defaultdict):
                 ans.append((k, float(v)))
                 continue
             if ("audio_tagging" in k) or ("speaker_verification" in k):
-                norm_value = (
-                    float(v) / num_utterances
-                )
+                norm_value = float(v) / num_utterances
             else:
                 norm_value = (
-                    float(v) / num_frames if "utt_" not in k else float(v) / num_utterances
+                    float(v) / num_frames
+                    if "utt_" not in k
+                    else float(v) / num_utterances
                 )
             ans.append((k, norm_value))
         return ans
@@ -333,11 +366,11 @@ class MetricsTracker(collections.defaultdict):
             tb_writer.add_scalar(prefix + k, v, batch_idx)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     text = "你好 ， 这是 一个  测试 句子 ！Hello 希望 这段 代码 能正常 工作 。"
     normalized_text = normalize_chinese_text(text)
     print(normalized_text)
-    
+
     text = "Hello, world! It's a great day to learn NLP."
     normalized_text = normalize_english_text(text)
     print(normalized_text)
