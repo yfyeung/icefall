@@ -897,7 +897,9 @@ def compute_loss(
         )
 
     info = MetricsTracker()
-    info["loss"] = loss.detach().cpu().item()
+    batch_size = len(batch["supervisions"]["text"])
+    info["utterances"] = batch_size
+    info["utt_clip_loss"] = loss.detach().cpu().item() * batch_size
 
     return loss, info
 
@@ -990,8 +992,8 @@ def compute_metrics(
     ) / 2
 
     metrics = {}
-    metrics[f"cumulative_loss"] = total_loss.item()
-    metrics[f"num_samples"] = N
+    metrics["clip_loss"] = total_loss.item()
+    metrics["num_samples"] = N
 
     for name, logit in {
         "audio_to_text": logits_per_audio,
@@ -1109,8 +1111,8 @@ def train_one_epoch(
             # summary stats
             tot_loss = (tot_loss * (1 - 1 / params.reset_interval)) + loss_info
 
-            # NOTE: We use reduction==sum and loss is computed over utterances
-            # in the batch and there is no normalization to it so far.
+            # NOTE: We use reduction==mean and loss is computed over utterances
+            # in the batch.
             scaler.scale(loss).backward()
             scheduler.step_batch(params.batch_idx_train)
 
@@ -1250,7 +1252,7 @@ def train_one_epoch(
                 ) as f:
                     f.write(json.dumps(metrics) + "\n")
 
-    loss_value = tot_loss["loss"]
+    loss_value = tot_loss["utt_clip_loss"] / tot_loss["utterances"]
     params.train_loss = loss_value
     if params.train_loss < params.best_train_loss:
         params.best_train_epoch = params.cur_epoch
