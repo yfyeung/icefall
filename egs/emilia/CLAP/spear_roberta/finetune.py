@@ -42,8 +42,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from asr_datamodule import LibriSpeechAsrDataModule
 from clap_module import ClipLoss
-from lhotse.cut import Cut
-from lhotse.dataset.sampling.base import CutSampler
 from lhotse.utils import fix_random_seed
 from model import CLAP
 from optim import Eden, ScaledAdam
@@ -789,7 +787,7 @@ def save_checkpoint(
     model_avg: Optional[nn.Module] = None,
     optimizer: Optional[torch.optim.Optimizer] = None,
     scheduler: Optional[LRSchedulerType] = None,
-    sampler: Optional[CutSampler] = None,
+    sampler: Optional[Any] = None,
     scaler: Optional[GradScaler] = None,
     rank: int = 0,
 ) -> None:
@@ -856,6 +854,7 @@ def compute_loss(
         values >= 1.0 are fully warmed up and have all modules present.
     """
     device = model.device if isinstance(model, DDP) else next(model.parameters()).device
+    logging.info(f"Step {params.batch_idx_train}, {batch['inputs'].shape}")
     feature = batch["inputs"]
     # at entry, feature is (N, T, C)
     assert feature.ndim == 3
@@ -1070,6 +1069,8 @@ def train_one_epoch(
         The rank of the node in DDP training. If no DDP is used, it should
         be set to 0.
     """
+    device = torch.device("cuda", torch.cuda.current_device())
+
     model.train()
 
     tot_loss = MetricsTracker()
@@ -1089,12 +1090,35 @@ def train_one_epoch(
             rank=0,
         )
 
+    def slice_batch(batch, n):
+        if isinstance(batch, dict):
+            return {k: slice_batch(v, n) for k, v in batch.items()}
+        if isinstance(batch, tuple):
+            return tuple(slice_batch(v, n) for v in batch)
+        if isinstance(batch, list):
+            return [slice_batch(v, n) for v in batch[:n]]
+        if isinstance(batch, torch.Tensor):
+            if batch.dim() == 0:
+                return batch
+            return batch[:n]
+        return batch
+
     for batch_idx, batch in enumerate(train_dl):
+        batch_size = len(batch["supervisions"]["text"])
+
+        if world_size > 1:
+            t = torch.tensor([batch_size], dtype=torch.int64, device=device)
+            torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.MIN)
+            min_batch_size = int(t.item())
+
+            if batch_size > min_batch_size:
+                batch = slice_batch(batch, min_batch_size)
+                batch_size = min_batch_size
+
         if batch_idx % 10 == 0:
             set_batch_count(model, get_adjusted_batch_count(params))
 
         params.batch_idx_train += 1
-        batch_size = len(batch["supervisions"]["text"])
 
         try:
             with torch.cuda.amp.autocast(
@@ -1417,9 +1441,9 @@ def run(rank, world_size, args):
     else:
         train_cuts = librispeech.train_all_shuf_cuts()
 
-    def remove_short_and_long_utt(c: Cut):
-        # Keep only utterances with duration between 1 second and 30 seconds
-        if c.duration < 1.0 or c.duration > 30.0:
+    def remove_short_and_long_utt(c: Any):
+        # Keep only utterances with duration between 1 second and 20 seconds
+        if c.duration < 1.0 or c.duration > 20.0:
             # logging.warning(
             #     f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
             # )
@@ -1434,6 +1458,25 @@ def run(rank, world_size, args):
         sampler_state_dict = checkpoints["sampler"]
     else:
         sampler_state_dict = None
+
+    if rank == 0:
+        duration_bins = librispeech.estimate_duration_bins(
+            cuts=train_cuts,
+            world_size=world_size,
+            rank=rank,
+        )
+        librispeech.args.duration_bins = duration_bins
+    if world_size > 1:
+        obj_list = [duration_bins if rank == 0 else None]
+        torch.distributed.broadcast_object_list(obj_list, src=0)
+        librispeech.args.duration_bins = obj_list[0]
+
+    last_upper = 20.0
+    librispeech.args.max_seq_len_buckets = librispeech.args.duration_bins + [last_upper]
+    librispeech.args.fixed_batch_sizes = [
+        max(1, int(params.max_duration // ub))
+        for ub in librispeech.args.max_seq_len_buckets
+    ]
 
     # construct the training dataloader
     train_dl = librispeech.train_dataloaders(
