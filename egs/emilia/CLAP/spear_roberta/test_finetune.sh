@@ -4,7 +4,6 @@ export PYTHONPATH=/root/icefall:$PYTHONPATH
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 # data related
-use_librispeech=1
 full_libri=1
 
 lr=0.045
@@ -20,7 +19,7 @@ freeze_encoder=0
 freeze_encoder_steps=-1
 encoder_lr_scale=0.02222
 
-md=500
+md=1000
 
 exp_dir=spear_roberta/exp_ft
 
@@ -28,12 +27,12 @@ echo $exp_dir
 
 if true; then
 python spear_roberta/finetune.py \
-    --world-size 1 \
-    --num-epochs 200 \
+    --world-size 8 \
+    --num-epochs 100 \
     --use-fp16 0 \
-    --use-bf16 0 \
+    --use-bf16 1 \
     --start-epoch 1 \
-    --use-librispeech $use_librispeech --full-libri $full_libri \
+    --full-libri $full_libri \
     --exp-dir $exp_dir \
     --manifest-dir data/fbank \
     --base-lr $lr \
