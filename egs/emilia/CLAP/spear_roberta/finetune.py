@@ -817,7 +817,6 @@ def save_checkpoint(
         params=params,
         optimizer=optimizer,
         scheduler=scheduler,
-        sampler=sampler,
         scaler=scaler,
         rank=rank,
     )
@@ -1084,7 +1083,6 @@ def train_one_epoch(
             params=params,
             optimizer=optimizer,
             scheduler=scheduler,
-            sampler=train_dl.sampler,
             scaler=scaler,
             rank=0,
         )
@@ -1102,17 +1100,33 @@ def train_one_epoch(
             return batch[:n]
         return batch
 
-    for batch_idx, batch in enumerate(train_dl):
-        batch_size = len(batch["supervisions"]["text"])
+    train_iter = iter(train_dl)
+    batch_idx = -1
+    while True:
+        batch_idx += 1
+
+        try:
+            batch = next(train_iter)
+            batch_size = len(batch["supervisions"]["text"])
+        except StopIteration:
+            batch_size = 0
 
         if world_size > 1:
             t = torch.tensor([batch_size], dtype=torch.int64, device=device)
             torch.distributed.all_reduce(t, op=torch.distributed.ReduceOp.MIN)
             min_batch_size = int(t.item())
 
-            if batch_size > min_batch_size:
-                batch = slice_batch(batch, min_batch_size)
-                batch_size = min_batch_size
+            if min_batch_size == 0:
+                batch_size = 0
+            else:
+                if batch_size > min_batch_size:
+                    batch = slice_batch(batch, min_batch_size)
+                    batch_size = min_batch_size
+
+        if batch_size == 0:
+            logging.info(f"Epoch {params.cur_epoch} finished.")
+            train_dl.sampler.cuts_iter.close()
+            break
 
         if batch_idx % 10 == 0:
             set_batch_count(model, get_adjusted_batch_count(params))
@@ -1177,7 +1191,6 @@ def train_one_epoch(
                 params=params,
                 optimizer=optimizer,
                 scheduler=scheduler,
-                sampler=train_dl.sampler,
                 scaler=scaler,
                 rank=rank,
             )
@@ -1448,13 +1461,6 @@ def run(rank, world_size, args):
 
     train_cuts = train_cuts.filter(remove_short_and_long_utt)
 
-    if params.start_batch > 0 and checkpoints and "sampler" in checkpoints:
-        # We only load the sampler's state dict when it loads a checkpoint
-        # saved in the middle of an epoch
-        sampler_state_dict = checkpoints["sampler"]
-    else:
-        sampler_state_dict = None
-
     if rank == 0:
         duration_bins = librispeech.estimate_duration_bins(
             cuts=train_cuts,
@@ -1477,7 +1483,6 @@ def run(rank, world_size, args):
     # construct the training dataloader
     train_dl = librispeech.train_dataloaders(
         train_cuts,
-        sampler_state_dict=sampler_state_dict,
         world_size=world_size,
         rank=rank,
     )
