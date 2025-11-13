@@ -854,7 +854,6 @@ def compute_loss(
         values >= 1.0 are fully warmed up and have all modules present.
     """
     device = model.device if isinstance(model, DDP) else next(model.parameters()).device
-    logging.info(f"Step {params.batch_idx_train}, {batch['inputs'].shape}")
     feature = batch["inputs"]
     # at entry, feature is (N, T, C)
     assert feature.ndim == 3
@@ -1244,37 +1243,34 @@ def train_one_epoch(
                         "train/grad_scale", cur_grad_scale, params.batch_idx_train
                     )
 
-        if (
-            rank == 0
-            and batch_idx % params.valid_interval == 0
-            and not params.print_diagnostics
-        ):
-            for valid_set, valid_dl in zip(valid_sets, valid_dls):
-                logging.info(f"Do validation on {valid_set}")
-                metrics = evaluate(
-                    params=params,
-                    model=model,
-                    tokenizer=tokenizer,
-                    valid_dl=valid_dl,
-                )
-                model.train()
-                logging.info(
-                    f"Epoch {params.cur_epoch}, "
-                    f"validation on {valid_set}, "
-                    + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
-                )
-                logging.info(
-                    f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
-                )
-                if tb_writer is not None:
-                    for name, val in metrics.items():
-                        tb_writer.add_scalar(
-                            f"valid/{valid_set}-{name}", val, params.batch_idx_train
-                        )
-                with open(
-                    f"{params.exp_dir}/log/log-valid-{valid_set}.jsonl", "a+"
-                ) as f:
-                    f.write(json.dumps(metrics) + "\n")
+        if batch_idx % params.valid_interval == 0 and not params.print_diagnostics:
+            if rank == 0:
+                for valid_set, valid_dl in zip(valid_sets, valid_dls):
+                    logging.info(f"Do validation on {valid_set}")
+                    metrics = evaluate(
+                        params=params,
+                        model=unwrap_model(model),
+                        tokenizer=tokenizer,
+                        valid_dl=valid_dl,
+                    )
+                    model.train()
+                    logging.info(
+                        f"Epoch {params.cur_epoch}, "
+                        f"validation on {valid_set}, "
+                        + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+                    )
+                    logging.info(
+                        f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
+                    )
+                    if tb_writer is not None:
+                        for name, val in metrics.items():
+                            tb_writer.add_scalar(
+                                f"valid/{valid_set}-{name}", val, params.batch_idx_train
+                            )
+                    with open(
+                        f"{params.exp_dir}/log/log-valid-{valid_set}.jsonl", "a+"
+                    ) as f:
+                        f.write(json.dumps(metrics) + "\n")
 
     loss_value = tot_loss["utt_clip_loss"] / tot_loss["utterances"]
     params.train_loss = loss_value
