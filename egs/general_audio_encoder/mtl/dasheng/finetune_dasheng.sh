@@ -1,44 +1,29 @@
 #!/usr/bin/env bash
 
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 echo "Num gpus: $GPU_COUNT"
-
-cd /mnt/shared-storage-user/housiyuan/xiaoyu/workspace/icefall_general_encoder/egs/general_audio_encoder/mtl
-echo "Current dir: $PWD"
-
-####### Mount the necessary disks #######
-bash mount_brainllm_h.sh
-ls -lh download/LibriSpeech
-#########################################
-
-############## PYTHON env ###############
-source /home/housiyuan/miniconda3/etc/profile.d/conda.sh && conda activate encoder
-
-work_dir=/mnt/shared-storage-user/housiyuan/xiaoyu/workspace/icefall_general_encoder/egs/general_audio_encoder/mtl
-cd $work_dir
 
 echo "Current Directory: $PWD"
 
 export PYTHONPATH=./../../../:$PYTHONPATH
-export PYTHONPATH=/mnt/shared-storage-user/housiyuan/xiaoyu/workspace/lhotse_dev:$PYTHONPATH
-#########################################
 
 # the dasheng model version, base/medium/large
-model_version=medium
+model_version=large
 full_libri=1
 
 # full finetune
 freeze_encoder=0
 set_eval=0
 
-
 torchrun --nproc_per_node=1 --master_port=19293 \
-    dasheng/finetune_asr.py \
-        --num-epochs 30 \
+dasheng/finetune_asr.py \
+        --world-size 8 \
+        --num-epochs 50 \
         --use-fp16 1 \
         --start-epoch 1 \
-        --manifest-dir data/librispeech_manifest \
         --full-libri $full_libri \
         --model-version $model_version \
         --exp-dir dasheng/exp-finetune-asr-full-libri-${full_libri}-${model_version} \
-        --max-duration 200
+        --max-duration 100
 
+for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done

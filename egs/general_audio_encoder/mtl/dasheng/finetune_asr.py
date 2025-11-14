@@ -57,6 +57,8 @@ import argparse
 import copy
 import logging
 import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 from pathlib import Path
 from shutil import copyfile
 from typing import Any, Dict, List, Optional, Tuple, Union
