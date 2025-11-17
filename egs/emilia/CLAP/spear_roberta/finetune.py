@@ -40,7 +40,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
-from asr_datamodule import LibriSpeechAsrDataModule
+from asr_datamodule import EmiliaAsrDataModule
 from clap_module import ClipLoss
 from lhotse.utils import fix_random_seed
 from model import CLAP
@@ -1256,7 +1256,11 @@ def train_one_epoch(
                         "train/grad_scale", cur_grad_scale, params.batch_idx_train
                     )
 
-        if batch_idx % params.valid_interval == 0 and not params.print_diagnostics:
+        if (
+            0
+            and batch_idx % params.valid_interval == 0
+            and not params.print_diagnostics
+        ):
             if rank == 0:
                 for valid_set, valid_dl in zip(valid_sets, valid_dls):
                     logging.info(f"Do validation on {valid_set}")
@@ -1443,16 +1447,13 @@ def run(rank, world_size, args):
     if params.inf_check:
         register_inf_check_hooks(model)
 
-    librispeech = LibriSpeechAsrDataModule(args)
+    emilia = EmiliaAsrDataModule(args)
 
-    if not params.full_libri:
-        train_cuts = librispeech.train_clean_100_cuts()
-    else:
-        train_cuts = librispeech.train_all_shuf_cuts()
+    train_cuts = emilia.emilia_en_cuts()
 
     def remove_short_and_long_utt(c: Any):
-        # Keep only utterances with duration between 1 second and 20 seconds
-        if c.duration < 1.0 or c.duration > 20.0:
+        # Keep only utterances with duration between 1 second and 30 seconds
+        if c.duration < 4.0 or c.duration > 30.0:
             # logging.warning(
             #     f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"
             # )
@@ -1462,26 +1463,26 @@ def run(rank, world_size, args):
     train_cuts = train_cuts.filter(remove_short_and_long_utt)
 
     if rank == 0:
-        duration_bins = librispeech.estimate_duration_bins(
+        duration_bins = emilia.estimate_duration_bins(
             cuts=train_cuts,
             world_size=world_size,
             rank=rank,
         )
-        librispeech.args.duration_bins = duration_bins
+        emilia.args.duration_bins = duration_bins
+        logging.info(f"Duration bins: {duration_bins}")
     if world_size > 1:
         obj_list = [duration_bins if rank == 0 else None]
         torch.distributed.broadcast_object_list(obj_list, src=0)
-        librispeech.args.duration_bins = obj_list[0]
+        emilia.args.duration_bins = obj_list[0]
 
-    last_upper = 20.0
-    librispeech.args.max_seq_len_buckets = librispeech.args.duration_bins + [last_upper]
-    librispeech.args.fixed_batch_sizes = [
-        max(1, int(params.max_duration // ub))
-        for ub in librispeech.args.max_seq_len_buckets
+    last_upper = 30.0
+    emilia.args.max_seq_len_buckets = emilia.args.duration_bins + [last_upper]
+    emilia.args.fixed_batch_sizes = [
+        max(1, int(params.max_duration // ub)) for ub in emilia.args.max_seq_len_buckets
     ]
 
     # construct the training dataloader
-    train_dl = librispeech.train_dataloaders(
+    train_dl = emilia.train_dataloaders(
         train_cuts,
         world_size=world_size,
         rank=rank,
@@ -1489,12 +1490,11 @@ def run(rank, world_size, args):
 
     valid_sets = []
     valid_dls = []
-    if rank == 0:
-        valid_cuts = librispeech.dev_clean_cuts()
-        # valid_cuts += librispeech.dev_other_cuts()
+    if 0 and rank == 0:
+        valid_cuts = emilia.dev_clean_cuts()
         valid_sets.append("librispeech")
         valid_dls.append(
-            librispeech.valid_dataloaders(
+            emilia.valid_dataloaders(
                 valid_cuts,
                 world_size=1,
                 rank=rank,
@@ -1582,7 +1582,7 @@ def display_and_save_batch(
 
 def main():
     parser = get_parser()
-    LibriSpeechAsrDataModule.add_arguments(parser)
+    EmiliaAsrDataModule.add_arguments(parser)
     args = parser.parse_args()
     args.exp_dir = Path(args.exp_dir)
 
