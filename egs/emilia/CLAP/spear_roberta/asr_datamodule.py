@@ -1,5 +1,6 @@
 # Copyright      2021  Piotr Żelasko
 # Copyright      2022  Xiaomi Corporation     (Author: Mingshuang Luo)
+# Copyright      2025  Yifan Yang
 #
 # See ../../../../LICENSE for clarification regarding multiple authors
 #
@@ -54,7 +55,7 @@ class _SeedWorkers:
         fix_random_seed(self.seed + worker_id)
 
 
-class EmiliaAsrDataModule:
+class DataModule:
     """
     DataModule for k2 ASR experiments.
     It assumes there is always one train and valid dataloader,
@@ -86,7 +87,7 @@ class EmiliaAsrDataModule:
         group.add_argument(
             "--manifest-dir",
             type=Path,
-            default=Path("data/fbank"),
+            default=Path("data/manifests"),
             help="Path to directory with train/valid/test cuts.",
         )
         group.add_argument(
@@ -466,9 +467,7 @@ class EmiliaAsrDataModule:
     @lru_cache()
     def emilia_en_cuts(self) -> CutSet:
         logging.info("About to get Emilia EN tars")
-        filenames = glob.glob(
-            "./download/Emilia/EN/*.tar"
-        )
+        filenames = glob.glob("./download/Emilia/EN/*.tar")
         logging.info(f"Loading Emilia {len(filenames)} tars in lazy mode")
         return CutSet.from_webdataset(
             filenames,
@@ -478,29 +477,29 @@ class EmiliaAsrDataModule:
         )
 
     @lru_cache()
-    def dev_clean_cuts(self) -> CutSet:
-        logging.info("About to get dev-clean cuts")
+    def paraspeechcaps_test100_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps test 100 cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-clean.jsonl.gz"
+            self.args.manifest_dir / "paraspeechcaps_cuts_test100.jsonl.gz"
         )
 
     @lru_cache()
-    def dev_other_cuts(self) -> CutSet:
-        logging.info("About to get dev-other cuts")
+    def paraspeechcaps_test200_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps test 200 cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_dev-other.jsonl.gz"
+            self.args.manifest_dir / "paraspeechcaps_cuts_test200.jsonl.gz"
         )
 
     @lru_cache()
-    def test_clean_cuts(self) -> CutSet:
-        logging.info("About to get test-clean cuts")
+    def paraspeechcaps_test500_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps test 500 cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-clean.jsonl.gz"
+            self.args.manifest_dir / "paraspeechcaps_cuts_test500.jsonl.gz"
         )
 
     @lru_cache()
-    def test_other_cuts(self) -> CutSet:
-        logging.info("About to get test-other cuts")
+    def paraspeechcaps_test1000_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps test 1000 cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "librispeech_cuts_test-other.jsonl.gz"
+            self.args.manifest_dir / "paraspeechcaps_cuts_test1000.jsonl.gz"
         )

@@ -40,7 +40,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
-from asr_datamodule import EmiliaAsrDataModule
+from asr_datamodule import DataModule
 from clap_module import ClipLoss
 from lhotse.utils import fix_random_seed
 from model import CLAP
@@ -954,7 +954,7 @@ def evaluate(
             eval_info["all_text_features"].append(text_features.cpu())
 
             if batch_idx % 100 == 0:
-                logging.info(f"Epoch {params.cur_epoch}, validation batch {batch_idx}")
+                logging.info(f"Validation batch {batch_idx}")
 
         metrics_single_dataset = compute_metrics(
             audio_features=torch.cat(eval_info["all_audio_features"]),
@@ -1447,9 +1447,9 @@ def run(rank, world_size, args):
     if params.inf_check:
         register_inf_check_hooks(model)
 
-    emilia = EmiliaAsrDataModule(args)
+    datamodule = DataModule(args)
 
-    train_cuts = emilia.emilia_en_cuts()
+    train_cuts = datamodule.emilia_en_cuts()
 
     def remove_short_and_long_utt(c: Any):
         # Keep only utterances with duration between 1 second and 30 seconds
@@ -1463,26 +1463,27 @@ def run(rank, world_size, args):
     train_cuts = train_cuts.filter(remove_short_and_long_utt)
 
     if rank == 0:
-        duration_bins = emilia.estimate_duration_bins(
+        duration_bins = datamodule.estimate_duration_bins(
             cuts=train_cuts,
             world_size=world_size,
             rank=rank,
         )
-        emilia.args.duration_bins = duration_bins
+        datamodule.args.duration_bins = duration_bins
         logging.info(f"Duration bins: {duration_bins}")
     if world_size > 1:
         obj_list = [duration_bins if rank == 0 else None]
         torch.distributed.broadcast_object_list(obj_list, src=0)
-        emilia.args.duration_bins = obj_list[0]
+        datamodule.args.duration_bins = obj_list[0]
 
     last_upper = 30.0
-    emilia.args.max_seq_len_buckets = emilia.args.duration_bins + [last_upper]
-    emilia.args.fixed_batch_sizes = [
-        max(1, int(params.max_duration // ub)) for ub in emilia.args.max_seq_len_buckets
+    datamodule.args.max_seq_len_buckets = datamodule.args.duration_bins + [last_upper]
+    datamodule.args.fixed_batch_sizes = [
+        max(1, int(params.max_duration // ub))
+        for ub in datamodule.args.max_seq_len_buckets
     ]
 
     # construct the training dataloader
-    train_dl = emilia.train_dataloaders(
+    train_dl = datamodule.train_dataloaders(
         train_cuts,
         world_size=world_size,
         rank=rank,
@@ -1491,10 +1492,10 @@ def run(rank, world_size, args):
     valid_sets = []
     valid_dls = []
     if 0 and rank == 0:
-        valid_cuts = emilia.dev_clean_cuts()
+        valid_cuts = datamodule.dev_clean_cuts()
         valid_sets.append("librispeech")
         valid_dls.append(
-            emilia.valid_dataloaders(
+            datamodule.valid_dataloaders(
                 valid_cuts,
                 world_size=1,
                 rank=rank,
@@ -1582,7 +1583,7 @@ def display_and_save_batch(
 
 def main():
     parser = get_parser()
-    EmiliaAsrDataModule.add_arguments(parser)
+    DataModule.add_arguments(parser)
     args = parser.parse_args()
     args.exp_dir = Path(args.exp_dir)
 
