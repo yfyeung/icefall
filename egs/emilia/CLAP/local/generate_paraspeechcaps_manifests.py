@@ -36,7 +36,7 @@ def process_psc_base(args, subset, source):
             item = json.loads(line)
             audio_path = item["audio_path"]
             transcription = item["text"].strip()
-            captions = [i.strip() for i in item["caption"]]
+            captions = [item["caption"][-1].strip()]  # use short caption
 
             cut_id = (
                 subset
