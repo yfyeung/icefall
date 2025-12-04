@@ -4,7 +4,12 @@ from collections import defaultdict
 
 from datasets import load_dataset
 
-splits = ["holdout", "dev", "train_base", "train_scaled"]
+splits = [
+    "holdout",
+    "dev",
+    "train_base",
+    # "train_scaled",
+]
 
 os.makedirs("data/manifests", exist_ok=True)
 
@@ -41,10 +46,25 @@ for split in splits:
                 text = sample["transcription"]
                 caption = sample["text_description"]
 
+                intrinsic_tags = sample["intrinsic_tags"]
+                situational_tags = sample["situational_tags"]
+                speaker = sample["name"]
+                gender = sample["gender"]
+                accent = sample["accent"]
+                pitch = sample["pitch"]
+                speaking_rate = sample["speaking_rate"]
+
                 obj = {
                     "audio_path": audio_path,
                     "text": text,
                     "caption": caption,
+                    "intrinsic_tags": intrinsic_tags,
+                    "situational_tags": situational_tags,
+                    "speaker": speaker,
+                    "gender": gender,
+                    "accent": accent,
+                    "pitch": pitch,
+                    "speaking_rate": speaking_rate,
                 }
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 

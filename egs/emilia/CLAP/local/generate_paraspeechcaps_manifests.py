@@ -10,6 +10,7 @@ from lhotse import CutSet
 from lhotse.audio import Recording
 from lhotse.cut import MonoCut
 from lhotse.supervision import SupervisionSegment
+from normalize_paraspeechcaps import normalize
 
 
 def get_parser():
@@ -34,9 +35,25 @@ def process_psc_base(args, subset, source):
     with open(manifests_file) as reader:
         for line in reader:
             item = json.loads(line)
+
             audio_path = item["audio_path"]
+
+            speaker = item["speaker"].strip()
+            gender = item["gender"].strip()
+            accent = item["accent"].strip()
+            pitch = item["pitch"].strip()
+            speaking_rate = item["speaking_rate"].strip()
+            intrinsic_tags = [i.strip() for i in item["intrinsic_tags"]]
+            situational_tags = (
+                [i.strip() for i in item["situational_tags"]]
+                if item["situational_tags"] is not None
+                else None
+            )
+
             transcription = item["text"].strip()
-            captions = [item["caption"][-1].strip()]  # use short caption
+            captions = [
+                normalize(re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip(), accent)
+            ]  # use short caption
 
             cut_id = (
                 subset
@@ -66,8 +83,16 @@ def process_psc_base(args, subset, source):
                 channel=0,
                 duration=recording.duration,
                 text=transcription,
+                speaker=speaker,
             )
             supervision.captions = captions
+
+            supervision.gender = gender
+            supervision.accent = accent
+            supervision.pitch = pitch
+            supervision.speaking_rate = speaking_rate
+            supervision.intrinsic_tags = intrinsic_tags
+            supervision.situational_tags = situational_tags
 
             cut.supervisions = [supervision]
             cut.resample(16000)
@@ -107,7 +132,8 @@ def process_psc_scaled(args, subset, source):
     for item in items_sorted:
         audio_path_in_tar = item["audio_path"].rsplit("/", 1)[-1]
         transcription = item["text"].strip()
-        captions = [i.strip() for i in item["caption"]]
+        assert len(item["caption"]) == 1, item["caption"]
+        captions = [re.sub(r"[\t\n\r]", " ", item["caption"][0]).strip()]
 
         tar_key = extract_key(audio_path_in_tar)
         while True:
