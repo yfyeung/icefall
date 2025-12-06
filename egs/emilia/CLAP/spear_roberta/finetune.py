@@ -932,8 +932,12 @@ def evaluate(
             assert feature.ndim == 3
             feature = feature.to(device)
             feature_lens = batch["supervisions"]["num_frames"].to(device)
+            captions = [
+                c.supervisions[0].custom["long_captions"][0]
+                for c in batch["supervisions"]["cut"]
+            ]
             text = tokenizer(
-                batch["supervisions"]["text"],
+                captions,
                 padding=True,
                 truncation=True,
                 return_tensors="pt",

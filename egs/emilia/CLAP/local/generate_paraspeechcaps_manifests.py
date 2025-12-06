@@ -47,11 +47,11 @@ def process_psc_base(args, subset, source):
             situational_tags = (
                 [i.strip() for i in item["situational_tags"]]
                 if item["situational_tags"] is not None
-                else None
+                else []
             )
 
             transcription = item["text"].strip()
-            captions = [
+            short_captions = [
                 normalize(re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip(), accent)
             ]  # use short caption
 
@@ -85,7 +85,8 @@ def process_psc_base(args, subset, source):
                 text=transcription,
                 speaker=speaker,
             )
-            supervision.captions = captions
+            supervision.short_captions = short_captions
+            supervision.long_captions = []
 
             supervision.gender = gender
             supervision.accent = accent
@@ -95,7 +96,7 @@ def process_psc_base(args, subset, source):
             supervision.situational_tags = situational_tags
 
             cut.supervisions = [supervision]
-            cut.resample(16000)
+            cut = cut.resample(16000)
             cuts.append(cut)
 
             num_cuts += 1
@@ -133,7 +134,7 @@ def process_psc_scaled(args, subset, source):
         audio_path_in_tar = item["audio_path"].rsplit("/", 1)[-1]
         transcription = item["text"].strip()
         assert len(item["caption"]) == 1, item["caption"]
-        captions = [re.sub(r"[\t\n\r]", " ", item["caption"][0]).strip()]
+        short_captions = [re.sub(r"[\t\n\r]", " ", item["caption"][0]).strip()]
 
         tar_key = extract_key(audio_path_in_tar)
         while True:
@@ -176,10 +177,11 @@ def process_psc_scaled(args, subset, source):
             duration=recording.duration,
             text=transcription,
         )
-        supervision.captions = captions
+        supervision.short_captions = short_captions
+        supervision.long_captions = []
 
         cut.supervisions = [supervision]
-        cut.resample(16000)
+        cut = cut.resample(16000)
         cuts.append(cut)
 
         num_cuts += 1
@@ -201,7 +203,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     split2subsets = {
-        "psc-base": ["holdout", "dev", "train_base"],
+        "psc-base": ["test", "dev", "train_base"],  # "holdout"
         # "psc-scaled": ["train_scaled"],
     }
 

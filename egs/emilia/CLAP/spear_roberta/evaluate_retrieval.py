@@ -214,12 +214,15 @@ def main():
 
     datamodule = DataModule(args)
 
-    paraspeechcaps_test100_cuts = datamodule.paraspeechcaps_test100_cuts()
+    paraspeechcaps_test_cuts = datamodule.paraspeechcaps_test_cuts()
+    paraspeechcaps_test_dl = datamodule.test_dataloaders(paraspeechcaps_test_cuts)
 
-    paraspeechcaps_test100_dl = datamodule.test_dataloaders(paraspeechcaps_test100_cuts)
-
-    test_sets = ["paraspeechcaps_test100"]
-    test_dls = [paraspeechcaps_test100_dl]
+    test_sets = [
+        "paraspeechcaps_test",
+    ]
+    test_dls = [
+        paraspeechcaps_test_dl,
+    ]
 
     for test_set, test_dl in zip(test_sets, test_dls):
         metrics = evaluate(
@@ -228,7 +231,9 @@ def main():
             tokenizer=tokenizer,
             valid_dl=test_dl,
         )
-        logging.info(" ".join([f"{k}: {v:.4f}" for k, v in metrics.items()]))
+        logging.info(
+            f"{test_set}: " + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+        )
 
     logging.info("Done!")
 

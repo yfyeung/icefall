@@ -26,7 +26,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
-from lhotse import CutSet, Fbank, FbankConfig, load_manifest, load_manifest_lazy
+from lhotse import (
+    CutSet,
+    Fbank,
+    FbankConfig,
+    combine,
+    load_manifest,
+    load_manifest_lazy,
+)
 from lhotse.dataset import (  # noqa F401 for PrecomputedFeatures
     CutConcatenate,
     CutMix,
@@ -477,29 +484,37 @@ class DataModule:
         )
 
     @lru_cache()
-    def paraspeechcaps_test100_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps test 100 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "paraspeechcaps_cuts_test100.jsonl.gz"
+    def paraspeechcaps_train_base_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps train-base cuts")
+        splits = ["voxceleb", "expresso", "ears"]
+        return combine(
+            load_manifest_lazy(
+                self.args.manifest_dir
+                / f"paraspeechcaps_cuts_train_base-{s}-attached.jsonl.gz"
+            )
+            for s in splits
         )
 
     @lru_cache()
-    def paraspeechcaps_test200_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps test 200 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "paraspeechcaps_cuts_test200.jsonl.gz"
+    def paraspeechcaps_dev_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps dev cuts")
+        splits = ["voxceleb", "expresso", "ears"]
+        return combine(
+            load_manifest_lazy(
+                self.args.manifest_dir
+                / f"paraspeechcaps_cuts_dev-{s}-attached.jsonl.gz"
+            )
+            for s in splits
         )
 
     @lru_cache()
-    def paraspeechcaps_test500_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps test 500 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "paraspeechcaps_cuts_test500.jsonl.gz"
-        )
-
-    @lru_cache()
-    def paraspeechcaps_test1000_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps test 1000 cuts")
-        return load_manifest_lazy(
-            self.args.manifest_dir / "paraspeechcaps_cuts_test1000.jsonl.gz"
+    def paraspeechcaps_test_cuts(self) -> CutSet:
+        logging.info("About to get paraspeechcaps test cuts")
+        splits = ["voxceleb", "expresso", "ears"]
+        return combine(
+            load_manifest_lazy(
+                self.args.manifest_dir
+                / f"paraspeechcaps_cuts_test-{s}-attached.jsonl.gz"
+            )
+            for s in splits
         )

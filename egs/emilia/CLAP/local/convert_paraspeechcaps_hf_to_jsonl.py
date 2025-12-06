@@ -5,7 +5,8 @@ from collections import defaultdict
 from datasets import load_dataset
 
 splits = [
-    "holdout",
+    # "holdout",
+    "test",
     "dev",
     "train_base",
     # "train_scaled",
