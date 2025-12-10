@@ -28,9 +28,18 @@ def get_parser():
 
 
 def process_psc_base(args, subset, source):
+    manifests_file = f"{args.output_dir}/paraspeechcaps_{subset}-{source}.jsonl"
+    output_path = (
+        args.output_dir + "/" + f"paraspeechcaps_cuts_{subset}-{source}.jsonl.gz"
+    )
+
+    if os.path.exists(output_path):
+        print(f"{output_path} exists, skip")
+        return
+
     cuts = []
     num_cuts = 0
-    manifests_file = f"{args.output_dir}/paraspeechcaps_{subset}-{source}.jsonl"
+
     logging.info(f"Loading manifest: {manifests_file}")
     with open(manifests_file) as reader:
         for line in reader:
@@ -53,7 +62,7 @@ def process_psc_base(args, subset, source):
             transcription = item["text"].strip()
             short_captions = [
                 normalize(re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip(), accent)
-            ]  # use short caption
+            ]  # use the shorter caption
 
             cut_id = (
                 subset
@@ -104,14 +113,21 @@ def process_psc_base(args, subset, source):
                 logging.info(f"Processed {num_cuts} cuts until now.")
 
     cut_set = CutSet.from_cuts(cuts)
-    cuts_filename = f"paraspeechcaps_cuts_{subset}-{source}.jsonl.gz"
 
-    logging.info(f"Saving to {args.output_dir}/{cuts_filename}")
-    cut_set.to_file(args.output_dir + "/" + cuts_filename)
+    logging.info(f"Saving to {output_path}")
+    cut_set.to_file(output_path)
 
 
 def process_psc_scaled(args, subset, source):
     manifests_file = f"{args.output_dir}/paraspeechcaps_{subset}-{source}.jsonl"
+    output_path = (
+        args.output_dir + "/" + f"paraspeechcaps_cuts_{subset}-{source}.jsonl.gz"
+    )
+
+    if os.path.exists(output_path):
+        print(f"{output_path} exists, skip")
+        return
+
     items = []
     logging.info(f"Loading manifest: {manifests_file}")
     with open(manifests_file) as reader:
@@ -134,7 +150,9 @@ def process_psc_scaled(args, subset, source):
         audio_path_in_tar = item["audio_path"].rsplit("/", 1)[-1]
         transcription = item["text"].strip()
         assert len(item["caption"]) == 1, item["caption"]
-        short_captions = [re.sub(r"[\t\n\r]", " ", item["caption"][0]).strip()]
+        short_captions = [
+            re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip()
+        ]  # use the shorter caption
 
         tar_key = extract_key(audio_path_in_tar)
         while True:
@@ -192,10 +210,9 @@ def process_psc_scaled(args, subset, source):
         current_tar_handle.close()
 
     cut_set = CutSet.from_cuts(cuts)
-    cuts_filename = f"paraspeechcaps_cuts_{subset}-{source}.jsonl.gz"
 
-    logging.info(f"Saving to {args.output_dir}/{cuts_filename}")
-    cut_set.to_file(args.output_dir + "/" + cuts_filename)
+    logging.info(f"Saving to {output_path}")
+    cut_set.to_file(output_path)
 
 
 def main():
@@ -203,7 +220,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     split2subsets = {
-        "psc-base": ["test", "dev", "train_base"],  # "holdout"
+        "psc-base": ["test", "dev", "holdout", "train_base"],
         # "psc-scaled": ["train_scaled"],
     }
 

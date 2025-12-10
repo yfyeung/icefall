@@ -5,7 +5,7 @@ from collections import defaultdict
 from datasets import load_dataset
 
 splits = [
-    # "holdout",
+    "holdout",
     "test",
     "dev",
     "train_base",
@@ -27,6 +27,10 @@ for split in splits:
         output_path = os.path.join(
             "data/manifests", f"paraspeechcaps_{split}-{source}.jsonl"
         )
+
+        if os.path.exists(output_path):
+            print(f"{output_path} exists, skip")
+            continue
 
         with open(output_path, "w", encoding="utf-8") as f:
             for sample in samples:

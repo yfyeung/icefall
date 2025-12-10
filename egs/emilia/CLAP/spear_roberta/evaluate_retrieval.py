@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from asr_datamodule import DataModule
-from finetune import add_model_arguments, evaluate, get_model, get_params
+from finetune_stage2 import add_model_arguments, evaluate, get_model, get_params
 from transformers import RobertaTokenizer
 
 from icefall.checkpoint import (
@@ -205,6 +205,10 @@ def main():
                     device=device,
                 )
             )
+
+    # filename = params.exp_dir / f"epoch-{params.epoch}-avg-{params.avg}.pt"
+    # torch.save({"model": model.state_dict()}, filename)
+    # exit()
 
     model.to(device)
     model.eval()

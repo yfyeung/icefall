@@ -932,12 +932,8 @@ def evaluate(
             assert feature.ndim == 3
             feature = feature.to(device)
             feature_lens = batch["supervisions"]["num_frames"].to(device)
-            captions = [
-                c.supervisions[0].custom["long_captions"][0]
-                for c in batch["supervisions"]["cut"]
-            ]
             text = tokenizer(
-                captions,
+                batch["supervisions"]["text"],
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
@@ -1456,7 +1452,7 @@ def run(rank, world_size, args):
     train_cuts = datamodule.emilia_en_cuts()
 
     def remove_short_and_long_utt(c: Any):
-        # Keep only utterances with duration between 1 second and 30 seconds
+        # Keep only utterances with duration between 4 second and 30 seconds
         if c.duration < 4.0 or c.duration > 30.0:
             # logging.warning(
             #     f"Exclude cut with ID {c.id} from training. Duration: {c.duration}"

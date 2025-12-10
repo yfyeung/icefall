@@ -485,26 +485,15 @@ class DataModule:
 
     @lru_cache()
     def paraspeechcaps_train_base_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps train-base cuts")
-        splits = ["voxceleb", "expresso", "ears"]
-        return combine(
-            load_manifest_lazy(
-                self.args.manifest_dir
-                / f"paraspeechcaps_cuts_train_base-{s}-attached.jsonl.gz"
-            )
-            for s in splits
+        logging.info("About to get paraspeechcaps train-base shuffled cuts")
+        return load_manifest_lazy(
+            self.args.manifest_dir / "paraspeechcaps_cuts_train_base_shuf.jsonl.gz"
         )
 
     @lru_cache()
     def paraspeechcaps_dev_cuts(self) -> CutSet:
-        logging.info("About to get paraspeechcaps dev cuts")
-        splits = ["voxceleb", "expresso", "ears"]
-        return combine(
-            load_manifest_lazy(
-                self.args.manifest_dir
-                / f"paraspeechcaps_cuts_dev-{s}-attached.jsonl.gz"
-            )
-            for s in splits
+        return load_manifest_lazy(
+            self.args.manifest_dir / "paraspeechcaps_cuts_dev_shuf.jsonl.gz"
         )
 
     @lru_cache()
@@ -513,8 +502,7 @@ class DataModule:
         splits = ["voxceleb", "expresso", "ears"]
         return combine(
             load_manifest_lazy(
-                self.args.manifest_dir
-                / f"paraspeechcaps_cuts_test-{s}-attached.jsonl.gz"
+                self.args.manifest_dir / f"paraspeechcaps_cuts_test-{s}.jsonl.gz"
             )
             for s in splits
         )
