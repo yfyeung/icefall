@@ -54,15 +54,13 @@ class ClipLoss(nn.Module):
         self.gather_with_grad = gather_with_grad
         self.rank = rank
         self.world_size = world_size
-        # cache state
-        self.prev_num_logits = 0
-        self.labels = {}
 
     def forward(
         self,
         audio_features,
         text_features,
         logit_scale,
+        multi_positive=False,
     ):
         device = audio_features.device
 
@@ -88,18 +86,54 @@ class ClipLoss(nn.Module):
             logits_per_audio = logit_scale * audio_features @ text_features.T
             logits_per_text = logit_scale * text_features @ audio_features.T
 
-        # calculated ground-truth and cache if enabled
-        num_logits = logits_per_audio.shape[0]
-        if self.prev_num_logits != num_logits or device not in self.labels:
+        # calculated ground-truth
+        if multi_positive:
+            B_audio_local = audio_features.shape[0]
+            B_text_local = text_features.shape[0]
+            assert B_audio_local * 2 == B_text_local
+            B = B_audio_local
+
+            if not self.local_loss:
+                num_audio_global = logits_per_audio.shape[0]
+                idx_audio = torch.arange(num_audio_global, device=device)
+
+                rank_audio = idx_audio // B
+                local_audio = idx_audio % B
+
+                pos1 = rank_audio * (2 * B) + local_audio
+                pos2 = pos1 + B
+
+                num_text_global = logits_per_text.shape[0]
+                idx_text = torch.arange(num_text_global, device=device)
+
+                rank_text = idx_text // (2 * B)
+                labels_text = rank_text * B + idx_text % B
+            else:
+                idx_local_audio = torch.arange(B, device=device)
+                pos1 = self.rank * (2 * B) + idx_local_audio
+                pos2 = pos1 + B
+
+                idx_local_text = torch.arange(2 * B, device=device)
+                labels_text = self.rank * B + idx_local_text % B
+
+            labels_audio = torch.zeros_like(logits_per_audio)
+            labels_audio.scatter_(1, pos1.unsqueeze(1), 0.5)
+            labels_audio.scatter_(1, pos2.unsqueeze(1), 0.5)
+
+            total_loss = (
+                F.cross_entropy(logits_per_audio, labels_audio)
+                + F.cross_entropy(logits_per_text, labels_text)
+            ) / 2
+
+        else:
+            num_logits = logits_per_audio.shape[0]
             labels = torch.arange(num_logits, device=device, dtype=torch.long)
             if self.world_size > 1 and self.local_loss:
                 labels = labels + num_logits * self.rank
-        else:
-            labels = self.labels[device]
 
-        total_loss = (
-            F.cross_entropy(logits_per_audio, labels)
-            + F.cross_entropy(logits_per_text, labels)
-        ) / 2
+            total_loss = (
+                F.cross_entropy(logits_per_audio, labels)
+                + F.cross_entropy(logits_per_text, labels)
+            ) / 2
 
         return total_loss

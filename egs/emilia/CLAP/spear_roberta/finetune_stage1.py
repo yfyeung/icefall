@@ -932,8 +932,12 @@ def evaluate(
             assert feature.ndim == 3
             feature = feature.to(device)
             feature_lens = batch["supervisions"]["num_frames"].to(device)
+            captions = [
+                c.supervisions[0].custom["long_captions"][1]
+                for c in batch["supervisions"]["cut"]
+            ]
             text = tokenizer(
-                batch["supervisions"]["text"],
+                captions,
                 padding=True,
                 truncation=True,
                 return_tensors="pt",
@@ -1161,6 +1165,7 @@ def train_one_epoch(
 
             optimizer.zero_grad()
         except Exception as e:  # noqa
+            logging.warning(e)
             save_bad_model()
             display_and_save_batch(batch, params=params)
             raise e

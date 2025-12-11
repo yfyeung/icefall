@@ -1,5 +1,6 @@
-from lhotse import CutSet
 from collections import Counter
+
+from lhotse import CutSet
 
 
 def main():

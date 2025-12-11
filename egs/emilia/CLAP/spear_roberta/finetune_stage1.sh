@@ -53,6 +53,7 @@ fi
 if true; then
 epoch=$2
 # avg=$3
+for epoch in $(seq $epoch 1 $((epoch + 9))); do
 for avg in $(seq 2 1 $((epoch - 1))); do
   python spear_roberta/evaluate_retrieval.py \
       --epoch $epoch \
@@ -72,6 +73,7 @@ for avg in $(seq 2 1 $((epoch - 1))); do
       --exp-dir $exp_dir \
       --max-duration $md
   done
+done
 fi
 
 python /root/busygpu/run.py

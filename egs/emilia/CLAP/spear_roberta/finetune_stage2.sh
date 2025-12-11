@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 export PYTHONPATH=/root/icefall:$PYTHONPATH
-# export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-export CUDA_VISIBLE_DEVICES=$1
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+# export CUDA_VISIBLE_DEVICES=$1
 
 lr=0.001
 
 # finetune checkpoint
 do_finetune=1
-finetune_ckpt=download/epoch-31-avg-3.pt
+finetune_ckpt=download/epoch-35-avg-15.pt
 
 output_ds=2
 post_output_ds=1
@@ -23,10 +23,10 @@ exp_dir=spear_roberta/exp_ft
 
 echo $exp_dir
 
-if false; then
+if true; then
 python spear_roberta/finetune_stage2.py \
     --world-size 8 \
-    --num-epochs 200 \
+    --num-epochs 400 \
     --use-fp16 0 \
     --use-bf16 1 \
     --start-epoch 1 \
@@ -51,7 +51,7 @@ python spear_roberta/finetune_stage2.py \
     --max-duration $md
 fi
 
-if true; then
+if false; then
 epoch=$2
 # avg=$3
 for epoch in $(seq $epoch 1 $((epoch + 9))); do
@@ -77,5 +77,5 @@ for avg in $(seq 2 1 $((epoch - 1))); do
 done
 fi
 
-# for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
-python /root/busygpu/run.py
+for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
+# python /root/busygpu/run.py

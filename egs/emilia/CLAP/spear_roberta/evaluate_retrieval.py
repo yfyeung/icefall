@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from asr_datamodule import DataModule
-from finetune_stage2 import add_model_arguments, evaluate, get_model, get_params
+from finetune_stage1 import add_model_arguments, evaluate, get_model, get_params
 from transformers import RobertaTokenizer
 
 from icefall.checkpoint import (

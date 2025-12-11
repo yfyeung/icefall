@@ -853,15 +853,22 @@ def compute_loss(
         values >= 1.0 are fully warmed up and have all modules present.
     """
     device = model.device if isinstance(model, DDP) else next(model.parameters()).device
+
     feature = batch["inputs"]
     # at entry, feature is (N, T, C)
     assert feature.ndim == 3
     feature = feature.to(device)
     feature_lens = batch["supervisions"]["num_frames"].to(device)
-    captions = [
-        c.supervisions[0].custom["short_captions"][0]
+
+    short_captions = [
+        random.choice(c.supervisions[0].custom["short_captions"])
         for c in batch["supervisions"]["cut"]
     ]
+    long_captions = [
+        random.choice(c.supervisions[0].custom["long_captions"])
+        for c in batch["supervisions"]["cut"]
+    ]
+    captions = short_captions + long_captions
     text = tokenizer(
         captions,
         padding=True,
@@ -895,10 +902,11 @@ def compute_loss(
             audio_features=audio_features,
             text_features=text_features,
             logit_scale=logit_scale,
+            multi_positive=True,
         )
 
     info = MetricsTracker()
-    batch_size = len(batch["supervisions"]["text"])
+    batch_size = len(batch["supervisions"]["cut"])
     info["utterances"] = batch_size
     info["utt_clip_loss"] = loss.detach().cpu().item() * batch_size
 
@@ -910,6 +918,7 @@ def evaluate(
     model: Union[nn.Module, DDP],
     tokenizer: RobertaTokenizer,
     valid_dl: torch.utils.data.DataLoader,
+    caption_type: str,
 ) -> Dict[str, float]:
     """Run the validation process."""
     model.eval()
@@ -936,10 +945,20 @@ def evaluate(
             assert feature.ndim == 3
             feature = feature.to(device)
             feature_lens = batch["supervisions"]["num_frames"].to(device)
-            captions = [
-                c.supervisions[0].custom["short_captions"][0]
-                for c in batch["supervisions"]["cut"]
-            ]
+
+            if caption_type == "short_captions":
+                captions = [
+                    c.supervisions[0].custom[caption_type][0]
+                    for c in batch["supervisions"]["cut"]
+                ]
+            elif caption_type == "long_captions":
+                captions = [
+                    c.supervisions[0].custom[caption_type][0]
+                    for c in batch["supervisions"]["cut"]
+                ]
+            else:
+                raise ValueError
+
             text = tokenizer(
                 captions,
                 padding=True,
@@ -1115,7 +1134,7 @@ def train_one_epoch(
 
         try:
             batch = next(train_iter)
-            batch_size = len(batch["supervisions"]["text"])
+            batch_size = len(batch["supervisions"]["cut"])
         except StopIteration:
             batch_size = 0
 
@@ -1169,6 +1188,7 @@ def train_one_epoch(
 
             optimizer.zero_grad()
         except Exception as e:  # noqa
+            logging.warning(e)
             save_bad_model()
             display_and_save_batch(batch, params=params)
             raise e
@@ -1268,30 +1288,36 @@ def train_one_epoch(
             if rank == 0:
                 for valid_set, valid_dl in zip(valid_sets, valid_dls):
                     logging.info(f"Do validation on {valid_set}")
-                    metrics = evaluate(
-                        params=params,
-                        model=unwrap_model(model),
-                        tokenizer=tokenizer,
-                        valid_dl=valid_dl,
-                    )
-                    model.train()
-                    logging.info(
-                        f"Epoch {params.cur_epoch}, "
-                        f"validation on {valid_set}, "
-                        + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
-                    )
-                    logging.info(
-                        f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
-                    )
-                    if tb_writer is not None:
-                        for name, val in metrics.items():
-                            tb_writer.add_scalar(
-                                f"valid/{valid_set}-{name}", val, params.batch_idx_train
-                            )
-                    with open(
-                        f"{params.exp_dir}/log/log-valid-{valid_set}.jsonl", "a+"
-                    ) as f:
-                        f.write(json.dumps(metrics) + "\n")
+                    for caption_type in ["short_captions", "long_captions"]:
+                        metrics = evaluate(
+                            params=params,
+                            model=unwrap_model(model),
+                            tokenizer=tokenizer,
+                            valid_dl=valid_dl,
+                            caption_type=caption_type,
+                        )
+                        model.train()
+                        logging.info(
+                            f"Epoch {params.cur_epoch}, "
+                            f"validation on {valid_set}, "
+                            f"{caption_type}, "
+                            + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
+                        )
+                        logging.info(
+                            f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
+                        )
+                        if tb_writer is not None:
+                            for name, val in metrics.items():
+                                tb_writer.add_scalar(
+                                    f"valid/{valid_set}-{caption_type}-{name}",
+                                    val,
+                                    params.batch_idx_train,
+                                )
+                        with open(
+                            f"{params.exp_dir}/log/log-valid-{valid_set}-{caption_type}.jsonl",
+                            "a+",
+                        ) as f:
+                            f.write(json.dumps(metrics) + "\n")
 
     loss_value = tot_loss["utt_clip_loss"] / tot_loss["utterances"]
     params.train_loss = loss_value
@@ -1496,8 +1522,8 @@ def run(rank, world_size, args):
     valid_sets = []
     valid_dls = []
     if rank == 0:
-        valid_cuts = datamodule.paraspeechcaps_dev_cuts()
-        valid_sets.append("paraspeechcaps dev")
+        valid_cuts = datamodule.paraspeechcaps_test_cuts()
+        valid_sets.append("paraspeechcaps test")
         valid_dls.append(
             datamodule.valid_dataloaders(
                 valid_cuts,

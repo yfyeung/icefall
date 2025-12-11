@@ -10,7 +10,7 @@ from lhotse import CutSet
 from lhotse.audio import Recording
 from lhotse.cut import MonoCut
 from lhotse.supervision import SupervisionSegment
-from normalize_paraspeechcaps import normalize
+from normalize_paraspeechcaps_short_captions import normalize
 
 
 def get_parser():
@@ -61,8 +61,9 @@ def process_psc_base(args, subset, source):
 
             transcription = item["text"].strip()
             short_captions = [
-                normalize(re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip(), accent)
-            ]  # use the shorter caption
+                normalize(re.sub(r"[\t\n\r]", " ", i).strip(), accent)
+                for i in item["caption"]
+            ]
 
             cut_id = (
                 subset
@@ -150,9 +151,7 @@ def process_psc_scaled(args, subset, source):
         audio_path_in_tar = item["audio_path"].rsplit("/", 1)[-1]
         transcription = item["text"].strip()
         assert len(item["caption"]) == 1, item["caption"]
-        short_captions = [
-            re.sub(r"[\t\n\r]", " ", item["caption"][-1]).strip()
-        ]  # use the shorter caption
+        short_captions = [re.sub(r"[\t\n\r]", " ", item["caption"][0]).strip()]
 
         tar_key = extract_key(audio_path_in_tar)
         while True:
