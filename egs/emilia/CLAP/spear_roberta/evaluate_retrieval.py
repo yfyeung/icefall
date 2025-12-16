@@ -17,6 +17,7 @@
 
 
 import argparse
+import json
 import logging
 import math
 from collections import defaultdict
@@ -26,7 +27,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from asr_datamodule import DataModule
-from finetune_stage1 import add_model_arguments, evaluate, get_model, get_params
+from finetune_stage2 import add_model_arguments, evaluate, get_model, get_params
 from transformers import RobertaTokenizer
 
 from icefall.checkpoint import (
@@ -229,15 +230,23 @@ def main():
     ]
 
     for test_set, test_dl in zip(test_sets, test_dls):
-        metrics = evaluate(
+        result_dict = evaluate(
             params=params,
             model=model,
             tokenizer=tokenizer,
             valid_dl=test_dl,
+            caption_type="short_captions",
+            return_details=True,
         )
+        metrics = result_dict["metrics"]
+        details = result_dict["details"]
         logging.info(
             f"{test_set}: " + " ".join([f"{k}: {v:.4f}" for k, v in metrics.items()])
         )
+        with open(
+            f"{params.res_dir}/details-decode-{params.suffix}", "w", encoding="utf-8"
+        ) as f:
+            json.dump(details, f, ensure_ascii=False, indent=2)
 
     logging.info("Done!")
 

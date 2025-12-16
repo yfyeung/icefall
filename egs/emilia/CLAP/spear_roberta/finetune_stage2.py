@@ -919,6 +919,7 @@ def evaluate(
     tokenizer: RobertaTokenizer,
     valid_dl: torch.utils.data.DataLoader,
     caption_type: str,
+    return_details: bool = False,
 ) -> Dict[str, float]:
     """Run the validation process."""
     model.eval()
@@ -932,6 +933,10 @@ def evaluate(
         "num_samples": 0,
         "all_audio_features": [],
         "all_text_features": [],
+    }
+    eval_detail = {
+        "all_audio_paths": [],
+        "all_texts": [],
     }
     with torch.no_grad():
         for batch_idx, batch in enumerate(valid_dl):
@@ -980,17 +985,47 @@ def evaluate(
             eval_info["all_audio_features"].append(audio_features.cpu())
             eval_info["all_text_features"].append(text_features.cpu())
 
+            if return_details:
+                eval_detail["all_audio_paths"].extend(
+                    [
+                        c.recording.sources[0].source
+                        for c in batch["supervisions"]["cut"]
+                    ]
+                )
+                eval_detail["all_texts"].extend(captions)
+
             if batch_idx % 100 == 0:
                 logging.info(f"Validation batch {batch_idx}")
 
-        metrics_single_dataset = compute_metrics(
+        metrics_single_dataset, details_single_dataset = compute_metrics(
             audio_features=torch.cat(eval_info["all_audio_features"]),
             text_features=torch.cat(eval_info["all_text_features"]),
             logit_scale=logit_scale.cpu(),
         )
         metrics.update(metrics_single_dataset)
 
-    return metrics
+        details = {}
+        for k, ranks in details_single_dataset.items():
+            if k == "audio_to_text_ranks":
+                src_list = eval_detail["all_audio_paths"]
+                tgt_list = eval_detail["all_texts"]
+            elif k == "text_to_audio_ranks":
+                src_list = eval_detail["all_texts"]
+                tgt_list = eval_detail["all_audio_paths"]
+            else:
+                raise ValueError
+
+            details[k] = {
+                src_list[i]: [
+                    f"GT# {tgt_list[j]}" if j == i else tgt_list[j] for j in ranking
+                ]
+                for i, ranking in enumerate(ranks)
+            }
+
+    return {
+        "metrics": metrics,
+        "details": details,
+    }
 
 
 @torch.no_grad()
@@ -1019,6 +1054,8 @@ def compute_metrics(
     metrics["clip_loss"] = total_loss.item()
     metrics["num_samples"] = N
 
+    details = {}
+
     for name, logit in {
         "audio_to_text": logits_per_audio,
         "text_to_audio": logits_per_text,
@@ -1030,6 +1067,8 @@ def compute_metrics(
         ranks.scatter_(1, ranking, torch.arange(N).unsqueeze(0).expand(N, -1))
         idx = torch.arange(N)
         preds = ranks[idx, idx]
+
+        details[f"{name}_ranks"] = ranking.detach().cpu().tolist()
 
         for k in [1, 5, 10]:
             metrics[f"{name}_R@{k}"] = (preds < k).float().mean().item()
@@ -1044,7 +1083,7 @@ def compute_metrics(
             .item()
         )
 
-    return metrics
+    return metrics, details
 
 
 def train_one_epoch(
@@ -1295,7 +1334,8 @@ def train_one_epoch(
                             tokenizer=tokenizer,
                             valid_dl=valid_dl,
                             caption_type=caption_type,
-                        )
+                            return_details=False,
+                        )["metrics"]
                         model.train()
                         logging.info(
                             f"Epoch {params.cur_epoch}, "
