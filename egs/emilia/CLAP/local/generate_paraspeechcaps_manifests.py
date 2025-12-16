@@ -70,7 +70,9 @@ def process_psc_base(args, subset, source):
                 + "-"
                 + source
                 + "-"
-                + audio_path.rsplit("/", 1)[-1].replace(".wav", "")
+                + audio_path.replace("download/", "")
+                .replace("/", "-")
+                .replace(".wav", "")
             )
 
             if not os.path.exists(audio_path):

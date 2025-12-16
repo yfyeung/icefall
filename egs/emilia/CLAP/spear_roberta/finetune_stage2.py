@@ -860,15 +860,29 @@ def compute_loss(
     feature = feature.to(device)
     feature_lens = batch["supervisions"]["num_frames"].to(device)
 
-    short_captions = [
-        random.choice(c.supervisions[0].custom["short_captions"])
-        for c in batch["supervisions"]["cut"]
-    ]
-    long_captions = [
-        random.choice(c.supervisions[0].custom["long_captions"])
-        for c in batch["supervisions"]["cut"]
-    ]
-    captions = short_captions + long_captions
+    task_list = ["short_and_long", "couple_of_long"]
+    task_probs = [0.50, 0.50]
+    current_task = random.choices(task_list, weights=task_probs, k=1)[0]
+
+    if current_task == "short_and_long":
+        short_captions = [
+            random.choice(c.supervisions[0].custom["short_captions"])
+            for c in batch["supervisions"]["cut"]
+        ]
+        long_captions = [
+            random.choice(c.supervisions[0].custom["long_captions"])
+            for c in batch["supervisions"]["cut"]
+        ]
+        captions = short_captions + long_captions
+    elif current_task == "couple_of_long":
+        sampled_pairs = [
+            random.sample(c.supervisions[0].custom["long_captions"], 2)
+            for c in batch["supervisions"]["cut"]
+        ]
+        long_captions1 = [pair[0] for pair in sampled_pairs]
+        long_captions2 = [pair[1] for pair in sampled_pairs]
+        captions = long_captions1 + long_captions2
+
     text = tokenizer(
         captions,
         padding=True,
@@ -958,7 +972,7 @@ def evaluate(
                 ]
             elif caption_type == "long_captions":
                 captions = [
-                    c.supervisions[0].custom[caption_type][0]
+                    c.supervisions[0].custom[caption_type][-1]
                     for c in batch["supervisions"]["cut"]
                 ]
             else:
@@ -1004,28 +1018,30 @@ def evaluate(
         )
         metrics.update(metrics_single_dataset)
 
-        details = {}
-        for k, ranks in details_single_dataset.items():
-            if k == "audio_to_text_ranks":
-                src_list = eval_detail["all_audio_paths"]
-                tgt_list = eval_detail["all_texts"]
-            elif k == "text_to_audio_ranks":
-                src_list = eval_detail["all_texts"]
-                tgt_list = eval_detail["all_audio_paths"]
-            else:
-                raise ValueError
+        if return_details:
+            details = {}
+            for k, ranks in details_single_dataset.items():
+                if k == "audio_to_text_ranks":
+                    src_list = eval_detail["all_audio_paths"]
+                    tgt_list = eval_detail["all_texts"]
+                elif k == "text_to_audio_ranks":
+                    src_list = eval_detail["all_texts"]
+                    tgt_list = eval_detail["all_audio_paths"]
+                else:
+                    raise ValueError
 
-            details[k] = {
-                src_list[i]: [
-                    f"GT# {tgt_list[j]}" if j == i else tgt_list[j] for j in ranking
-                ]
-                for i, ranking in enumerate(ranks)
-            }
+                details[k] = {
+                    src_list[i]: [
+                        f"GT# {tgt_list[j]}" if j == i else tgt_list[j] for j in ranking
+                    ]
+                    for i, ranking in enumerate(ranks)
+                }
 
-    return {
-        "metrics": metrics,
-        "details": details,
-    }
+    result_dict = {"metrics": metrics}
+    if return_details:
+        result_dict["details"] = details
+
+    return result_dict
 
 
 @torch.no_grad()

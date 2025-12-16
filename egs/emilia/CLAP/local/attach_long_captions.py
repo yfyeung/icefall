@@ -221,7 +221,7 @@ if __name__ == "__main__":
         help="Path to the output directory",
     )
     parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for initialization."
+        "--seed", type=int, default=1234, help="Random seed for initialization."
     )
     parser.add_argument(
         "-b", "--batch_size", type=int, default=64, help="Batch size for processing."

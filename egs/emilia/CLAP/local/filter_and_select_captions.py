@@ -13,7 +13,10 @@ MULTI_SPEAKER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-NO_PATTERN = re.compile(r"\bno\b|\bnot\b|\bfree from\b|\bwith no\b|\bwithout\b", re.IGNORECASE)
+NO_PATTERN = re.compile(
+    r"\bno\b|\bnot\b|\bneither\b|\bnor\b|\bfree from\b|\bwith no\b|\bwithout\b|\blacking\b|\brather than\b",
+    re.IGNORECASE,
+)
 
 
 def get_parser():
