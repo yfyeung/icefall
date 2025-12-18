@@ -1,5 +1,3 @@
-from collections import Counter
-
 from lhotse import CutSet
 
 

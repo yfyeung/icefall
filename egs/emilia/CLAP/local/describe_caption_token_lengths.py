@@ -1,6 +1,5 @@
 import os
 import sys
-from collections import Counter
 from multiprocessing import Pool, cpu_count
 
 import numpy as np

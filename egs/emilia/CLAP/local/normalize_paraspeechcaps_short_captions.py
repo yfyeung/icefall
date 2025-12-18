@@ -28,6 +28,10 @@ def remove_brackets(text: str) -> str:
 
 
 def map_phrases(text: str) -> str:
+    text = re.sub(r"\bwomen's\b", "woman's", text, flags=re.I)
+    text = re.sub(r"\bmen's\b", "man's", text, flags=re.I)
+    text = re.sub(r"\bwomen\b", "woman", text, flags=re.I)
+    text = re.sub(r"\bmen\b", "man", text, flags=re.I)
     text = re.sub(r"\b([\w-]+)\s+in\s+origin\b", r"\1 accent", text)
     text = re.sub(r"\borigin\b", "accent", text)
     text = re.sub(r"\bcontinent\b", "accent", text)
@@ -60,7 +64,7 @@ def process_accent(text: str, accent: str) -> str:
     def to_display_form(w: str) -> str:
         w = w.lower()
         parts = re.split(r"([/\-\s])", w)
-        return "".join(p.capitalize() if p.isalpha() else p for p in parts)
+        return "".join(p.capitalize() if p.isalpha() else p for p in parts).strip()
 
     if "/" in accent:
         accent = [accent] + accent.split("/")
@@ -69,20 +73,31 @@ def process_accent(text: str, accent: str) -> str:
 
     is_missing = True
     for w in accent:
-        max_edit = min(2, max(0, len(w.replace(" ", "")) - 5))
 
         base = w.lower()
-        first = base[0]
-        rest = base[1:]
         display = to_display_form(w)
 
-        pattern = regex.compile(
-            rf"(?i)\b{regex.escape(first)}({regex.escape(rest)}){{e<={max_edit}}}\b"
-        )
+        exact_pattern = re.compile(rf"\b{re.escape(base)}\b", re.I)
+        m = exact_pattern.search(text)
 
-        m = pattern.search(text)
+        if not m:
+            max_edit = min(2, max(0, len(w.replace(" ", "")) - 5))
+            fuzzy_pattern = regex.compile(
+                rf"(?i)\b({regex.escape(base)}){{e<={max_edit}}}\b"
+            )
+            m = fuzzy_pattern.search(text)
+
         if m:
-            text = pattern.sub(display, text, count=1)
+            matched_text = m.group()
+
+            if " " not in base and " " in matched_text.strip():
+                continue
+
+            span = m.span()
+            prefix = " " if matched_text.startswith(" ") else ""
+            suffix = " " if matched_text.endswith(" ") else ""
+            text = text[: span[0]] + prefix + display + suffix + text[span[1] :]
+
             is_missing = False
 
     if is_missing:

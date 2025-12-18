@@ -53,7 +53,7 @@ fi
 if true; then
 epoch=$2
 # avg=$3
-for epoch in $(seq $epoch 1 $((epoch + 9))); do
+for epoch in $(seq $epoch 1 $((epoch + 4))); do
 for avg in $(seq 2 1 $((epoch - 1))); do
   python spear_roberta/evaluate_retrieval.py \
       --epoch $epoch \

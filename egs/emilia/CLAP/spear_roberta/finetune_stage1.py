@@ -803,7 +803,7 @@ def save_checkpoint(
       optimizer:
         The optimizer used in the training.
       sampler:
-       The sampler for the training dataset.
+        The sampler for the training dataset.
       scaler:
         The scaler used for mix precision training.
     """

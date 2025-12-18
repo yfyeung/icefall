@@ -5,7 +5,6 @@ os.environ["VLLM_WORKER_MULTIPROC_METHOD"] = "spawn"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import argparse
-import json
 import multiprocessing as mp
 import time
 from base64 import b64encode

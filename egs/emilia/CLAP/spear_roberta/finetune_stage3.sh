@@ -17,14 +17,14 @@ freeze_encoder=0
 freeze_encoder_steps=-1
 encoder_lr_scale=1
 
-md=800
+md=750
 
 exp_dir=spear_roberta/exp_ft
 
 echo $exp_dir
 
 if true; then
-python spear_roberta/finetune_stage2.py \
+python spear_roberta/finetune_stage3.py \
     --world-size 8 \
     --num-epochs 400 \
     --use-fp16 0 \

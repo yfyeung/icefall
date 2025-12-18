@@ -41,7 +41,8 @@ import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 from asr_datamodule import DataModule
-from clap_module import ClipLoss
+from attribute_perturbation import perturb_one_attribution_in_text
+from clap_module import ClipLoss, local_clip_loss
 from lhotse.utils import fix_random_seed
 from model import CLAP
 from optim import Eden, ScaledAdam
@@ -852,9 +853,9 @@ def compute_loss(
      warmup: a floating point value which increases throughout training;
         values >= 1.0 are fully warmed up and have all modules present.
     """
-    batch_idx_train = params.batch_idx_train
-
     device = model.device if isinstance(model, DDP) else next(model.parameters()).device
+
+    batch_size = len(batch["supervisions"]["cut"])
 
     feature = batch["inputs"]
     # at entry, feature is (N, T, C)
@@ -862,32 +863,65 @@ def compute_loss(
     feature = feature.to(device)
     feature_lens = batch["supervisions"]["num_frames"].to(device)
 
-    def get_p(batch_idx_train):
-        return min(0.05 + (0.95 - 0.05) * batch_idx_train / 5000, 0.95)
-
-    task_list = ["couple_of_long", "short_and_long"]
-    current_prob = get_p(batch_idx_train)
-    task_probs = [current_prob, 1 - current_prob]
+    task_list = ["short_and_long", "couple_of_long"]
+    task_probs = [1.00, 0.00]
     current_task = random.choices(task_list, weights=task_probs, k=1)[0]
 
     if current_task == "short_and_long":
-        short_captions = [
-            random.choice(c.supervisions[0].custom["short_captions"])
-            for c in batch["supervisions"]["cut"]
-        ]
-        long_captions = [
-            random.choice(c.supervisions[0].custom["long_captions"])
-            for c in batch["supervisions"]["cut"]
-        ]
-        captions = short_captions + long_captions
+        short_captions = []
+        long_captions = []
+        perturbed_short_captions = []
+        for c in batch["supervisions"]["cut"]:
+            gender = c.supervisions[0].gender
+            speaking_rate = c.supervisions[0].custom["speaking_rate"]
+            pitch = c.supervisions[0].custom["pitch"]
+            accent = c.supervisions[0].custom["accent"]
+            intrinsic_tags = c.supervisions[0].custom["intrinsic_tags"]
+            situational_tags = c.supervisions[0].custom["situational_tags"]
+            short_caption = random.choice(c.supervisions[0].custom["short_captions"])
+            long_caption = random.choice(c.supervisions[0].custom["long_captions"])
+            perturbed_short_caption = perturb_one_attribution_in_text(
+                short_caption,
+                gender=gender,
+                speaking_rate=speaking_rate,
+                pitch=pitch,
+                accent=accent,
+                intrinsic_tags=intrinsic_tags,
+                situational_tags=situational_tags,
+            )
+            short_captions.append(short_caption)
+            long_captions.append(long_caption)
+            perturbed_short_captions.append(perturbed_short_caption)
+        captions = short_captions + long_captions + perturbed_short_captions
     elif current_task == "couple_of_long":
-        sampled_pairs = [
-            random.sample(c.supervisions[0].custom["long_captions"], 2)
-            for c in batch["supervisions"]["cut"]
-        ]
-        long_captions1 = [pair[0] for pair in sampled_pairs]
-        long_captions2 = [pair[1] for pair in sampled_pairs]
-        captions = long_captions1 + long_captions2
+        long_captions1 = []
+        long_captions2 = []
+        perturbed_long_captions1 = []
+        for c in batch["supervisions"]["cut"]:
+            gender = c.supervisions[0].gender
+            speaking_rate = c.supervisions[0].custom["speaking_rate"]
+            pitch = c.supervisions[0].custom["pitch"]
+            accent = c.supervisions[0].custom["accent"]
+            intrinsic_tags = c.supervisions[0].custom["intrinsic_tags"]
+            situational_tags = c.supervisions[0].custom["situational_tags"]
+            long_caption1, long_caption2 = random.sample(
+                c.supervisions[0].custom["long_captions"], 2
+            )
+            perturbed_long_caption1 = perturb_one_attribution_in_text(
+                long_caption1,
+                gender=gender,
+                speaking_rate=speaking_rate,
+                pitch=pitch,
+                accent=accent,
+                intrinsic_tags=intrinsic_tags,
+                situational_tags=situational_tags,
+            )
+            long_captions1.append(long_caption1)
+            long_captions2.append(long_caption2)
+            perturbed_long_captions1.append(perturbed_long_caption1)
+        captions = long_captions1 + long_captions2 + perturbed_long_captions1
+    else:
+        raise ValueError(f"Unsupported task: {current_task}")
 
     text = tokenizer(
         captions,
@@ -896,6 +930,8 @@ def compute_loss(
         return_tensors="pt",
     )
     text = {k: v.to(device) for k, v in text.items()}
+
+    batch_idx_train = params.batch_idx_train
 
     if params.freeze_encoder_steps > 0:
         freeze_encoder = batch_idx_train < params.freeze_encoder_steps
@@ -916,15 +952,33 @@ def compute_loss(
             freeze_audio_encoder=False,
             freeze_text_encoder=False,
         )
-        loss = criterion(
+        global_loss = criterion(
             audio_features=audio_features,
-            text_features=text_features,
+            text_features=text_features[: batch_size * 2],
             logit_scale=logit_scale,
             multi_positive=True,
         )
 
+        text_features_pos1 = text_features[0:batch_size]
+        text_features_pos2 = text_features[batch_size : 2 * batch_size]
+        text_features_neg1 = text_features[2 * batch_size : 3 * batch_size]
+
+        local_loss = local_clip_loss(
+            audio_features=audio_features,
+            text_features=torch.stack(
+                [
+                    text_features_pos1,
+                    text_features_pos2,
+                    text_features_neg1,
+                ],
+                dim=1,
+            ),  # (B, 3, D)
+            logit_scale=logit_scale,
+        )
+
+        loss = 0.8 * global_loss + 0.2 * local_loss
+
     info = MetricsTracker()
-    batch_size = len(batch["supervisions"]["cut"])
     info["utterances"] = batch_size
     info["utt_clip_loss"] = loss.detach().cpu().item() * batch_size
 

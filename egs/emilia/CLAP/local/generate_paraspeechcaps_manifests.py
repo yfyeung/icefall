@@ -5,7 +5,6 @@ import os
 import re
 import tarfile
 
-import lhotse
 from lhotse import CutSet
 from lhotse.audio import Recording
 from lhotse.cut import MonoCut

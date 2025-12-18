@@ -174,6 +174,7 @@ class CLAP(nn.Module):
         assert (
             audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0)
             or audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0) / 2
+            or audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0) / 3
         ), (
             audio.shape,
             audio_lens.shape,

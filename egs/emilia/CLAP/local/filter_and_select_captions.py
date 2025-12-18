@@ -56,10 +56,6 @@ def validate_short_captions(short_captions, cut_id, min_len=32):
 
 
 def validate_long_captions(long_captions, cut_id):
-    assert (
-        len(long_captions) == 10
-    ), f"long_captions length must be 10, got {len(long_captions)}"
-
     for idx, caption in enumerate(long_captions):
         if MULTI_SPEAKER_PATTERN.search(caption):
             logging.info(f"Filtered cut (id={cut_id}): multi speaker detected")

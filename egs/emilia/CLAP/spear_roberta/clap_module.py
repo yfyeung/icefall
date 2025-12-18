@@ -137,3 +137,29 @@ class ClipLoss(nn.Module):
             ) / 2
 
         return total_loss
+
+
+def local_clip_loss(
+    audio_features: torch.Tensor,
+    text_features: torch.Tensor,
+    logit_scale: torch.Tensor,
+) -> torch.Tensor:
+    B = audio_features.shape[0]
+
+    assert text_features.shape[0] == B
+    assert text_features.shape[1] == 3
+
+    logits = logit_scale * (audio_features.unsqueeze(1) * text_features).sum(dim=-1)
+
+    # logsumexp(pos) = log(e^P1 + e^P2)
+    log_sum_exp_pos = torch.logsumexp(logits[:, :2], dim=1)
+
+    # logsumexp(all) = log(e^P1 + e^P2 + e^N1)
+    log_sum_exp_all = torch.logsumexp(logits, dim=1)
+
+    # Loss = - log ( sum(exp(pos)) / sum(exp(all)) )
+    #      = - ( log(sum(exp(pos))) - log(sum(exp(all))) )
+    #      = log_sum_exp_all - log_sum_exp_pos
+    loss = log_sum_exp_all - log_sum_exp_pos
+
+    return loss.mean()
