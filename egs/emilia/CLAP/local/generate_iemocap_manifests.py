@@ -103,6 +103,7 @@ def main():
             start=0.0,
             channel=0,
             duration=cut.duration,
+            text="",
         )
         supervision.emotion = emotion
 

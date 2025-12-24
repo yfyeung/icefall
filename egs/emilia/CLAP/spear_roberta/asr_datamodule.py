@@ -514,3 +514,8 @@ class DataModule:
             )
             for s in splits
         )
+
+    @lru_cache()
+    def iemocap_cuts(self) -> CutSet:
+        logging.info("About to get iemocap cuts")
+        return load_manifest_lazy(self.args.manifest_dir / "iemocap_cuts_all.jsonl.gz")

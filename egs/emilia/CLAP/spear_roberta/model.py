@@ -149,9 +149,9 @@ class CLAP(nn.Module):
 
     def forward(
         self,
-        audio: torch.Tensor,
-        audio_lens: torch.Tensor,
-        text: dict,
+        audio: Optional[torch.Tensor] = None,
+        audio_lens: Optional[torch.Tensor] = None,
+        text: Optional[dict] = None,
         freeze_audio_encoder: bool = False,
         freeze_text_encoder: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -167,21 +167,10 @@ class CLAP(nn.Module):
         Returns:
           Return the CLAP loss
         """
-        assert audio.ndim == 3, audio.shape
-        assert audio_lens.ndim == 1, audio_lens.shape
-        assert text["input_ids"].ndim == 2, text["input_ids"].shape
-
-        assert (
-            audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0)
-            or audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0) / 2
-            or audio.size(0) == audio_lens.size(0) == text["input_ids"].size(0) / 3
-        ), (
-            audio.shape,
-            audio_lens.shape,
-            text["input_ids"].shape,
-        )
-
         if audio is not None:
+            assert audio.ndim == 3, audio.shape
+            assert audio_lens.ndim == 1, audio_lens.shape
+
             audio_encoder_out = self.forward_audio_encoder(
                 audio, audio_lens, freeze_encoder=freeze_audio_encoder
             )
@@ -190,6 +179,8 @@ class CLAP(nn.Module):
             audio_encoder_out = F.normalize(audio_encoder_out, dim=-1)
 
         if text is not None:
+            assert text["input_ids"].ndim == 2, text["input_ids"].shape
+
             text_encoder_out = self.forward_text_encoder(
                 text, freeze_encoder=freeze_text_encoder
             )

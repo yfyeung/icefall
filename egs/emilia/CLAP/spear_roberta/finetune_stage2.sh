@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 export PYTHONPATH=/root/icefall:$PYTHONPATH
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-# export CUDA_VISIBLE_DEVICES=$1
+# export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=$1
 
 lr=0.001
 
@@ -23,7 +23,7 @@ exp_dir=spear_roberta/exp_ft
 
 echo $exp_dir
 
-if true; then
+if false; then
 python spear_roberta/finetune_stage2.py \
     --world-size 8 \
     --num-epochs 400 \
@@ -73,9 +73,35 @@ for avg in $(seq 2 5 $((epoch - 1))); do
       --on-the-fly-feats 1 \
       --exp-dir $exp_dir \
       --max-duration $md
-  done
+done
 done
 fi
 
-for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
-# python /root/busygpu/run.py &
+if true; then
+# epoch=$2
+# avg=$3
+while read -r score tag; do
+  epoch=$(echo "$tag" | awk -F'[-]' '{print $2}')
+  avg=$(echo "$tag" | awk -F'[-]' '{print $4}')
+  python spear_roberta/evaluate_zero_shot_classification.py \
+      --epoch $epoch \
+      --avg $avg \
+      --manifest-dir data/manifests \
+      --use-averaged-model 1 \
+      --downsampling-factor 1,2,4,8,4,2,1 \
+      --num-encoder-layers 1,2,3,4,1,1,1 \
+      --feedforward-dim 3840,3840,3840,3840,3840,3840,3840 \
+      --encoder-dim 1280,1280,1280,1280,1280,1280,1280 \
+      --encoder-unmasked-dim 768,768,768,768,768,768,768 \
+      --cnn-module-kernel 31,31,15,15,15,31,31 \
+      --num-heads 8,8,8,8,8,8,8 \
+      --output-downsampling-factor $output_ds \
+      --post-encoder-downsampling-factor $post_output_ds \
+      --on-the-fly-feats 1 \
+      --exp-dir $exp_dir \
+      --max-duration $md
+done < "$2"
+fi
+
+# for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
+python /root/busygpu/run.py &

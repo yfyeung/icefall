@@ -863,7 +863,7 @@ def compute_loss(
     feature_lens = batch["supervisions"]["num_frames"].to(device)
 
     def get_p(batch_idx_train):
-        return min(0.05 + (0.95 - 0.05) * batch_idx_train / 5000, 0.95)
+        return min(0.05 + (0.50 - 0.05) * batch_idx_train / 10000, 0.50)
 
     task_list = ["couple_of_long", "short_and_long"]
     current_prob = get_p(batch_idx_train)
