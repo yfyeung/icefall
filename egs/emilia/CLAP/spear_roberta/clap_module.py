@@ -147,14 +147,14 @@ def local_clip_loss(
     B = audio_features.shape[0]
 
     assert text_features.shape[0] == B
-    assert text_features.shape[1] == 3
+    assert text_features.shape[1] == 2
 
     logits = logit_scale * (audio_features.unsqueeze(1) * text_features).sum(dim=-1)
 
-    # logsumexp(pos) = log(e^P1 + e^P2)
-    log_sum_exp_pos = torch.logsumexp(logits[:, :2], dim=1)
+    # logsumexp(pos) = log(e^P1)
+    log_sum_exp_pos = torch.logsumexp(logits[:, :1], dim=1)
 
-    # logsumexp(all) = log(e^P1 + e^P2 + e^N1)
+    # logsumexp(all) = log(e^P1 + e^N1)
     log_sum_exp_all = torch.logsumexp(logits, dim=1)
 
     # Loss = - log ( sum(exp(pos)) / sum(exp(all)) )

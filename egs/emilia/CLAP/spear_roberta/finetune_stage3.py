@@ -896,30 +896,13 @@ def compute_loss(
     elif current_task == "couple_of_long":
         long_captions1 = []
         long_captions2 = []
-        perturbed_long_captions1 = []
         for c in batch["supervisions"]["cut"]:
-            gender = c.supervisions[0].gender
-            speaking_rate = c.supervisions[0].custom["speaking_rate"]
-            pitch = c.supervisions[0].custom["pitch"]
-            accent = c.supervisions[0].custom["accent"]
-            intrinsic_tags = c.supervisions[0].custom["intrinsic_tags"]
-            situational_tags = c.supervisions[0].custom["situational_tags"]
             long_caption1, long_caption2 = random.sample(
                 c.supervisions[0].custom["long_captions"], 2
             )
-            perturbed_long_caption1 = perturb_one_attribution_in_text(
-                long_caption1,
-                gender=gender,
-                speaking_rate=speaking_rate,
-                pitch=pitch,
-                accent=accent,
-                intrinsic_tags=intrinsic_tags,
-                situational_tags=situational_tags,
-            )
             long_captions1.append(long_caption1)
             long_captions2.append(long_caption2)
-            perturbed_long_captions1.append(perturbed_long_caption1)
-        captions = long_captions1 + long_captions2 + perturbed_long_captions1
+        captions = long_captions1 + long_captions2
     else:
         raise ValueError(f"Unsupported task: {current_task}")
 
@@ -959,28 +942,33 @@ def compute_loss(
             multi_positive=True,
         )
 
-        text_features_pos1 = text_features[0:batch_size]
-        text_features_pos2 = text_features[batch_size : 2 * batch_size]
-        text_features_neg1 = text_features[2 * batch_size : 3 * batch_size]
+        if current_task == "short_and_long":
+            text_features_pos1 = text_features[0:batch_size]
+            text_features_neg1 = text_features[2 * batch_size : 3 * batch_size]
 
-        local_loss = local_clip_loss(
-            audio_features=audio_features,
-            text_features=torch.stack(
-                [
-                    text_features_pos1,
-                    text_features_pos2,
-                    text_features_neg1,
-                ],
-                dim=1,
-            ),  # (B, 3, D)
-            logit_scale=logit_scale,
-        )
+            local_loss = local_clip_loss(
+                audio_features=audio_features,
+                text_features=torch.stack(
+                    [
+                        text_features_pos1,
+                        text_features_neg1,
+                    ],
+                    dim=1,
+                ),  # (B, 3, D)
+                logit_scale=logit_scale,
+            )
+        else:
+            local_loss = None
 
-        loss = 0.8 * global_loss + 0.2 * local_loss
+        loss = global_loss + local_loss * 0.2
 
     info = MetricsTracker()
     info["utterances"] = batch_size
     info["utt_clip_loss"] = loss.detach().cpu().item() * batch_size
+    info["utt_global_loss"] = global_loss.detach().cpu().item() * batch_size
+    info["utt_local_loss"] = (
+        local_loss.detach().cpu().item() * batch_size if local_loss else None
+    )
 
     return loss, info
 
