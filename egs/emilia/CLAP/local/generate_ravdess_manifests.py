@@ -1,5 +1,6 @@
 import argparse
 import glob
+import json
 import logging
 import os
 
@@ -12,7 +13,16 @@ from lhotse.supervision import SupervisionSegment
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
-EMOTIONS = ["ang", "hap", "neu", "exc", "sad"]
+EMOTIONS = [
+    "angry",
+    "calm",
+    "disgust",
+    "fearful",
+    "happy",
+    "sad",
+    "surprised",
+    "neutral",
+]
 
 
 def get_parser():
@@ -23,8 +33,8 @@ def get_parser():
     parser.add_argument(
         "--dataset-dir",
         type=str,
-        help="Path to the iemocap dataset",
-        default="./download/IEMOCAP",
+        help="Path to the ravdess dataset",
+        default="./download/ravdess",
     )
 
     parser.add_argument(
@@ -44,64 +54,54 @@ def main():
     manifest_dir = args.manifest_dir
     os.makedirs(manifest_dir, exist_ok=True)
 
-    for session_id in [1, 2, 3, 4, 5]:
-        wav_folder = f"{dataset_dir}/Session{session_id}/dialog/wav"
-        label_folder = f"{dataset_dir}/Session{session_id}/dialog/EmoEvaluation"
-
-        label_files = sorted(glob.glob(f"{label_folder}/Ses*.txt"))
-
+    for fold_id in [0, 1, 2, 3]:
         dataset = {}
 
-        for label in label_files:
-            with open(label, "r") as f:
-                data = f.readlines()
+        label_paths = sorted(glob.glob(f"{dataset_dir}/fold_{fold_id}/*.json"))
+        for label_path in label_paths:
+            with open(label_path, "r") as f:
+                item = json.load(f)
+            emotion = item["emotion"]
 
-            for line in data:
-                # skip lines
-                if line[0] != "[":
-                    continue
-                items = line.strip().split("\t")
-                timestamp = items[0].replace("[", "").replace("]", "").split()
-                timestamp = [float(timestamp[0]), float(timestamp[2])]
-                clip_name = items[1]
-                audio_name = clip_name.rsplit("_", 1)[0]
-                emotion = items[2]
-                audio_name = wav_folder + "/" + f"{audio_name}.wav"
+            audio_path = label_path.replace(".json", ".wav")
+            assert os.path.isfile(audio_path)
+            audio_name = audio_path.split("/", 2)[-1].replace(".wav", "")
 
-                assert os.path.isfile(audio_name)
-                assert clip_name not in dataset
+            speaker_id = int(audio_name.rsplit("-", 1)[-1])
+            if speaker_id % 2 == 0:
+                gender = "female"
+            else:
+                gender = "male"
 
-                dataset[clip_name] = [audio_name, timestamp, emotion]
+            dataset[audio_name] = [audio_path, gender, emotion]
 
         logging.info(f"A total of {len(dataset)} clips!")
 
         cuts = []
         for i, (cut_id, info) in enumerate(dataset.items()):
-            audio_file, timestamp, emotion = info
-            recording = Recording.from_file(audio_file, cut_id)
-            if emotion not in EMOTIONS:
-                continue
-            if emotion == "exc":
-                emotion = "hap"
-            assert recording.sampling_rate == 16000
+            audio_path, gender, emotion = info
+            recording = Recording.from_file(audio_path, cut_id)
             cut = MonoCut(
                 id=cut_id,
-                start=timestamp[0],
-                duration=timestamp[1] - timestamp[0],
+                start=0,
+                duration=recording.duration,
                 channel=0,
                 recording=recording,
             )
             supervision = SupervisionSegment(
                 id=cut_id,
                 recording_id=cut.recording.id,
-                start=0.0,
+                start=0,
                 channel=0,
                 duration=cut.duration,
                 text="",
+                gender=gender,
             )
             supervision.emotion = emotion
 
             cut.supervisions = [supervision]
+            cut = cut.resample(16000)
+
             cuts.append(cut)
 
             if i % 100 == 0 and i:
@@ -111,7 +111,7 @@ def main():
         cuts = CutSet.from_cuts(cuts)
 
         manifest_output_dir = (
-            manifest_dir + "/" + f"iemocap_cuts_session{session_id}.jsonl.gz"
+            manifest_dir + "/" + f"ravdess_cuts_fold{fold_id}.jsonl.gz"
         )
 
         logging.info(f"Storing the manifest to {manifest_output_dir}")
