@@ -78,11 +78,11 @@ done
 fi
 
 if true; then
-# epoch=$2
-# avg=$3
-while read -r score tag; do
-  epoch=$(echo "$tag" | awk -F'[-]' '{print $2}')
-  avg=$(echo "$tag" | awk -F'[-]' '{print $4}')
+epoch=$2
+avg=$3
+# while read -r score tag; do
+  # epoch=$(echo "$tag" | awk -F'[-]' '{print $2}')
+  # avg=$(echo "$tag" | awk -F'[-]' '{print $4}')
   python spear_roberta/evaluate_zero_shot_classification.py \
       --epoch $epoch \
       --avg $avg \
@@ -100,8 +100,8 @@ while read -r score tag; do
       --on-the-fly-feats 1 \
       --exp-dir $exp_dir \
       --max-duration $md
-done < "$2"
+# done < "$2"
 fi
 
 # for i in {0..7}; do CUDA_VISIBLE_DEVICES=$i python /root/busygpu/run.py & done
-python /root/busygpu/run.py &
+# python /root/busygpu/run.py &

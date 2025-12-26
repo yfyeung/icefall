@@ -519,3 +519,13 @@ class DataModule:
     def iemocap_cuts(self) -> CutSet:
         logging.info("About to get iemocap cuts")
         return load_manifest_lazy(self.args.manifest_dir / "iemocap_cuts_all.jsonl.gz")
+
+    @lru_cache()
+    def ravdess_cuts(self) -> CutSet:
+        logging.info("About to get ravdess cuts")
+        return load_manifest_lazy(self.args.manifest_dir / "ravdess_cuts_all.jsonl.gz")
+
+    @lru_cache()
+    def cremad_cuts(self) -> CutSet:
+        logging.info("About to get crema-d cuts")
+        return load_manifest_lazy(self.args.manifest_dir / "cremad_cuts_test.jsonl.gz")

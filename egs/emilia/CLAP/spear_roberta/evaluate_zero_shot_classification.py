@@ -24,7 +24,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 from asr_datamodule import DataModule
-from finetune_stage2 import add_model_arguments, evaluate, get_model, get_params
+from finetune_stage2 import add_model_arguments, get_model, get_params
 from transformers import RobertaTokenizer
 
 from icefall.checkpoint import (
@@ -92,7 +92,7 @@ def get_parser():
     return parser
 
 
-def map_iemocap_label_to_index(label: str) -> int:
+def map_iemocap_emotion_label_to_index(label: str) -> int:
     label_map = {
         "hap": 0,
         "exc": 1,
@@ -103,13 +103,99 @@ def map_iemocap_label_to_index(label: str) -> int:
     return label_map[label]
 
 
-def generate_iemocap_prompts() -> str:
+def map_ravdess_emotion_label_to_index(label: str) -> int:
+    label_map = {
+        "angry": 0,
+        "calm": 1,
+        "disgust": 2,
+        "fearful": 3,
+        "happy": 4,
+        "sad": 5,
+        "surprised": 6,
+        "neutral": 7,
+    }
+    return label_map[label]
+
+
+def map_ravdess_gender_label_to_index(label: str) -> int:
+    label_map = {
+        "male": 0,
+        "female": 1,
+    }
+    return label_map[label]
+
+
+def map_cremad_emotion_label_to_index(label: str) -> int:
+    label_map = {
+        "H": 0,
+        "S": 1,
+        "A": 2,
+        "F": 3,
+        "D": 4,
+        "N": 5,
+    }
+    return label_map[label]
+
+
+def map_cremad_age_label_to_index(label: str) -> int:
+    if label < 20:
+        index = 0
+    elif label < 40:
+        index = 1
+    elif label < 60:
+        index = 2
+    else:
+        index = 3
+    return index
+
+
+def generate_iemocap_emotion_prompts() -> str:
     return [
         "A speaker in a happy tone.",
         "A speaker in a excited tone.",
         "A speaker in a angry tone.",
         "A speaker in a sad tone.",
         "A speaker in a neutral tone.",
+    ]
+
+
+def generate_ravdess_emotion_prompts() -> str:
+    return [
+        "A speaker in a angry tone.",
+        "A speaker in a calm tone.",
+        "A speaker in a disgust tone.",
+        "A speaker in a fear tone.",
+        "A speaker in a happy tone.",
+        "A speaker in a sad tone.",
+        "A speaker in a surprised tone.",
+        "A speaker in a neutral tone.",
+    ]
+
+
+def generate_ravdess_gender_prompts() -> str:
+    return [
+        "A male speaker.",
+        "A female speaker.",
+    ]
+
+
+def generate_cremad_emotion_prompts() -> str:
+    return [
+        "A speaker in a happy tone.",
+        "A speaker in a sad tone.",
+        "A speaker in a angry tone.",
+        "A speaker in a fear tone.",
+        "A speaker in a disgust tone.",
+        "A speaker in a neutral tone.",
+    ]
+
+
+def generate_cremad_age_prompts() -> str:
+    return [
+        "A child or young teenager speaker.",
+        "An adult speaker.",
+        "A middle-aged speaker.",
+        "An older or elder speaker.",
     ]
 
 
@@ -130,8 +216,16 @@ def evaluate(
         "all_gt_labels": [],
     }
 
-    if test_set == "iemocap":
-        prompts = generate_iemocap_prompts()
+    if test_set == "iemocap_emotion":
+        prompts = generate_iemocap_emotion_prompts()
+    elif test_set == "ravdess_emotion":
+        prompts = generate_ravdess_emotion_prompts()
+    elif test_set == "ravdess_gender":
+        prompts = generate_ravdess_gender_prompts()
+    elif test_set == "cremad_emotion":
+        prompts = generate_cremad_emotion_prompts()
+    elif test_set == "cremad_age":
+        prompts = generate_cremad_age_prompts()
     else:
         raise NotImplementedError(f"Unknown test set: {test_set}")
 
@@ -156,9 +250,35 @@ def evaluate(
             feature = feature.to(device)
             feature_lens = batch["supervisions"]["num_frames"].to(device)
 
-            if test_set == "iemocap":
+            if test_set == "iemocap_emotion":
                 gt_labels = [
-                    map_iemocap_label_to_index(c.supervisions[0].custom["emotion"])
+                    map_iemocap_emotion_label_to_index(
+                        c.supervisions[0].custom["emotion"]
+                    )
+                    for c in batch["supervisions"]["cut"]
+                ]
+            elif test_set == "ravdess_emotion":
+                gt_labels = [
+                    map_ravdess_emotion_label_to_index(
+                        c.supervisions[0].custom["emotion"]
+                    )
+                    for c in batch["supervisions"]["cut"]
+                ]
+            elif test_set == "ravdess_gender":
+                gt_labels = [
+                    map_ravdess_gender_label_to_index(c.supervisions[0].gender)
+                    for c in batch["supervisions"]["cut"]
+                ]
+            elif test_set == "cremad_emotion":
+                gt_labels = [
+                    map_cremad_emotion_label_to_index(
+                        c.supervisions[0].custom["emotion"]
+                    )
+                    for c in batch["supervisions"]["cut"]
+                ]
+            elif test_set == "cremad_age":
+                gt_labels = [
+                    map_cremad_age_label_to_index(c.supervisions[0].custom["age"])
                     for c in batch["supervisions"]["cut"]
                 ]
             else:
@@ -202,11 +322,11 @@ def compute_metrics(
     logits_per_audio = torch.matmul(audio_features, text_features.t())
     preds = logits_per_audio.argmax(dim=1)
 
-    if test_set == "iemocap":
+    if test_set == "iemocap_emotion":
         gt_labels = gt_labels.clamp(min=1)
         preds = preds.clamp(min=1)
 
-    accuracy = (preds == gt_labels).float().mean().item()
+    wa = (preds == gt_labels).float().mean().item()
 
     recall_sum = 0.0
     num_classes = 0
@@ -219,7 +339,7 @@ def compute_metrics(
         logging.info(f"{test_set}: cls {cls_idx}, recall {recall}")
     uar = recall_sum / num_classes if num_classes > 0 else 0.0
 
-    return {"accuracy": accuracy, "uar": uar}
+    return {"wa": wa, "uar": uar}
 
 
 @torch.no_grad()
@@ -349,11 +469,25 @@ def main():
     iemocap_test_cuts = datamodule.iemocap_cuts()
     iemocap_test_dl = datamodule.test_dataloaders(iemocap_test_cuts)
 
+    ravdess_test_cuts = datamodule.ravdess_cuts()
+    ravdess_test_dl = datamodule.test_dataloaders(ravdess_test_cuts)
+
+    cremad_test_cuts = datamodule.cremad_cuts()
+    cremad_test_dl = datamodule.test_dataloaders(cremad_test_cuts)
+
     test_sets = [
-        "iemocap",
+        # "iemocap_emotion",
+        # "ravdess_emotion",
+        # "cremad_emotion",
+        # "ravdess_gender",
+        "cremad_age",
     ]
     test_dls = [
-        iemocap_test_dl,
+        # iemocap_test_dl,
+        # ravdess_test_dl,
+        # cremad_test_dl,
+        # ravdess_test_dl,
+        cremad_test_dl,
     ]
 
     for test_set, test_dl in zip(test_sets, test_dls):

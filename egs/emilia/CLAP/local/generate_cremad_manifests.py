@@ -14,12 +14,12 @@ torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
 EMOTIONS = [
-    "A",
-    "D",
-    "F",
     "H",
-    "N",
     "S",
+    "A",
+    "F",
+    "D",
+    "N",
 ]
 
 
@@ -52,6 +52,16 @@ def main():
     manifest_dir = args.manifest_dir
     os.makedirs(manifest_dir, exist_ok=True)
 
+    speaker_id2age = {}
+    with open(f"{dataset_dir}/VideoDemographics.csv", "r") as f:
+        next(f)
+        for line in f:
+            line = line.strip()
+            parts = line.split(",")
+            speaker_id = parts[0]
+            age = int(parts[1])
+            speaker_id2age[speaker_id] = age
+
     for split in [
         "test",
         # "valid",
@@ -68,14 +78,16 @@ def main():
             audio_path = label_path.replace(".json", ".wav")
             assert os.path.isfile(audio_path)
             audio_name = audio_path.split("/", 1)[-1].replace(".wav", "")
+            speaker_id = audio_name.rsplit("/", 1)[-1].split("_", 1)[0]
+            age = speaker_id2age[speaker_id]
 
-            dataset[audio_name] = [audio_path, emotion]
+            dataset[audio_name] = [audio_path, speaker_id, age, emotion]
 
         logging.info(f"A total of {len(dataset)} clips!")
 
         cuts = []
         for i, (cut_id, info) in enumerate(dataset.items()):
-            audio_path, emotion = info
+            audio_path, speaker_id, age, emotion = info
             recording = Recording.from_file(audio_path, cut_id)
             cut = MonoCut(
                 id=cut_id,
@@ -91,7 +103,9 @@ def main():
                 channel=0,
                 duration=cut.duration,
                 text="",
+                speaker=speaker_id,
             )
+            supervision.age = age
             supervision.emotion = emotion
 
             cut.supervisions = [supervision]
