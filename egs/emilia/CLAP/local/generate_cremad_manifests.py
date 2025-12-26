@@ -14,14 +14,12 @@ torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
 EMOTIONS = [
-    "angry",
-    "calm",
-    "disgust",
-    "fearful",
-    "happy",
-    "sad",
-    "surprised",
-    "neutral",
+    "A",
+    "D",
+    "F",
+    "H",
+    "N",
+    "S",
 ]
 
 
@@ -33,8 +31,8 @@ def get_parser():
     parser.add_argument(
         "--dataset-dir",
         type=str,
-        help="Path to the ravdess dataset",
-        default="./download/ravdess",
+        help="Path to the cremad dataset",
+        default="./download/cremad",
     )
 
     parser.add_argument(
@@ -54,32 +52,30 @@ def main():
     manifest_dir = args.manifest_dir
     os.makedirs(manifest_dir, exist_ok=True)
 
-    for fold_id in [0, 1, 2, 3]:
+    for split in [
+        "test",
+        # "valid",
+        # "train",
+    ]:
         dataset = {}
 
-        label_paths = sorted(glob.glob(f"{dataset_dir}/fold_{fold_id}/*.json"))
+        label_paths = sorted(glob.glob(f"{dataset_dir}/{split}/*.json"))
         for label_path in label_paths:
             with open(label_path, "r") as f:
                 item = json.load(f)
-            emotion = item["emotion"]
+            emotion = item["label"]
 
             audio_path = label_path.replace(".json", ".wav")
             assert os.path.isfile(audio_path)
-            audio_name = audio_path.split("/", 2)[-1].replace(".wav", "")
+            audio_name = audio_path.split("/", 1)[-1].replace(".wav", "")
 
-            speaker_id = int(audio_name.rsplit("-", 1)[-1])
-            if speaker_id % 2 == 0:
-                gender = "female"
-            else:
-                gender = "male"
-
-            dataset[audio_name] = [audio_path, gender, emotion]
+            dataset[audio_name] = [audio_path, emotion]
 
         logging.info(f"A total of {len(dataset)} clips!")
 
         cuts = []
         for i, (cut_id, info) in enumerate(dataset.items()):
-            audio_path, gender, emotion = info
+            audio_path, emotion = info
             recording = Recording.from_file(audio_path, cut_id)
             cut = MonoCut(
                 id=cut_id,
@@ -95,7 +91,6 @@ def main():
                 channel=0,
                 duration=cut.duration,
                 text="",
-                gender=gender,
             )
             supervision.emotion = emotion
 
@@ -109,9 +104,7 @@ def main():
 
         cuts = CutSet.from_cuts(cuts)
 
-        manifest_output_dir = (
-            manifest_dir + "/" + f"ravdess_cuts_fold{fold_id}.jsonl.gz"
-        )
+        manifest_output_dir = manifest_dir + "/" + f"cremad_cuts_{split}.jsonl.gz"
 
         logging.info(f"Storing the manifest to {manifest_output_dir}")
         cuts.to_jsonl(manifest_output_dir)
