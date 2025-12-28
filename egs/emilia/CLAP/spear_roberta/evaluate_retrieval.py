@@ -19,13 +19,9 @@
 import argparse
 import json
 import logging
-import math
-from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 from asr_datamodule import DataModule
 from finetune_stage2 import add_model_arguments, evaluate, get_model, get_params
 from transformers import RobertaTokenizer
@@ -36,7 +32,7 @@ from icefall.checkpoint import (
     find_checkpoints,
     load_checkpoint,
 )
-from icefall.utils import AttributeDict, setup_logger, str2bool, write_error_stats
+from icefall.utils import setup_logger, str2bool
 
 
 def get_parser():

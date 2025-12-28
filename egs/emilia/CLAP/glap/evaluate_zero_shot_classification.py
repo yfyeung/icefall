@@ -19,65 +19,19 @@
 import argparse
 import logging
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 import torch
-import torch.nn as nn
-from asr_datamodule import DataModule
-from finetune_stage2 import add_model_arguments, get_model, get_params
-from transformers import RobertaTokenizer
+from clap_datamodule import DataModule
+from glap_model import glap_inference
 
-from icefall.checkpoint import (
-    average_checkpoints,
-    average_checkpoints_with_averaged_model,
-    find_checkpoints,
-    load_checkpoint,
-)
-from icefall.utils import AttributeDict, setup_logger, str2bool
+from icefall.env import get_env_info
+from icefall.utils import AttributeDict, setup_logger
 
 
 def get_parser():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-
-    parser.add_argument(
-        "--epoch",
-        type=int,
-        default=30,
-        help="""It specifies the checkpoint to use for decoding.
-        Note: Epoch counts from 1.
-        You can specify --avg to use more checkpoints for model averaging.""",
-    )
-
-    parser.add_argument(
-        "--iter",
-        type=int,
-        default=0,
-        help="""If positive, --epoch is ignored and it
-        will use the checkpoint exp_dir/checkpoint-iter.pt.
-        You can specify --avg to use more checkpoints for model averaging.
-        """,
-    )
-
-    parser.add_argument(
-        "--avg",
-        type=int,
-        default=15,
-        help="Number of checkpoints to average. Automatically select "
-        "consecutive checkpoints before the checkpoint specified by "
-        "'--epoch' and '--iter'",
-    )
-
-    parser.add_argument(
-        "--use-averaged-model",
-        type=str2bool,
-        default=True,
-        help="Whether to load averaged model. Currently it only supports "
-        "using --epoch. If True, it would decode with the averaged model "
-        "over the epoch range from `epoch-avg` (excluded) to `epoch`."
-        "Actually only the models with epoch number of `epoch-avg` and "
-        "`epoch` are loaded for averaging. ",
     )
 
     parser.add_argument(
@@ -87,9 +41,17 @@ def get_parser():
         help="The experiment dir",
     )
 
-    add_model_arguments(parser)
-
     return parser
+
+
+def get_params() -> AttributeDict:
+    params = AttributeDict(
+        {
+            "env_info": get_env_info(),
+        }
+    )
+
+    return params
 
 
 def map_iemocap_emotion_label_to_index(label: str) -> int:
@@ -201,15 +163,12 @@ def generate_cremad_age_prompts() -> str:
 
 def evaluate(
     params: AttributeDict,
-    model: nn.Module,
-    tokenizer: RobertaTokenizer,
+    model: Any,
+    device: torch.device,
     test_set: str,
     test_dl: torch.utils.data.DataLoader,
 ) -> Dict[str, float]:
-    """Run the Zero-Shot Classification validation process."""
-    model.eval()
-    device = next(model.parameters()).device
-
+    """Run the Zero-Shot Classification evaluation process."""
     metrics = {}
     eval_info = {
         "all_audio_features": [],
@@ -229,67 +188,42 @@ def evaluate(
     else:
         raise NotImplementedError(f"Unknown test set: {test_set}")
 
-    text = tokenizer(
-        prompts,
-        padding=True,
-        truncation=True,
-        return_tensors="pt",
-    )
-    text = {k: v.to(device) for k, v in text.items()}
-    _, text_features, _ = model(
-        text=text,
-        freeze_audio_encoder=True,
-        freeze_text_encoder=True,
-    )
+    text_features = model.encode_text(prompts, device=device)
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_dl):
-            feature = batch["inputs"]
-            # at entry, feature is (N, T, C)
-            assert feature.ndim == 3
-            feature = feature.to(device)
-            feature_lens = batch["supervisions"]["num_frames"].to(device)
+            audio = batch["audio"].to(device)
+            audio_lens = batch["audio_lens"].to(device)
 
             if test_set == "iemocap_emotion":
                 gt_labels = [
-                    map_iemocap_emotion_label_to_index(
-                        c.supervisions[0].custom["emotion"]
-                    )
-                    for c in batch["supervisions"]["cut"]
+                    map_iemocap_emotion_label_to_index(c.supervisions[0].emotion)
+                    for c in batch["cuts"]
                 ]
             elif test_set == "ravdess_emotion":
                 gt_labels = [
-                    map_ravdess_emotion_label_to_index(
-                        c.supervisions[0].custom["emotion"]
-                    )
-                    for c in batch["supervisions"]["cut"]
+                    map_ravdess_emotion_label_to_index(c.supervisions[0].emotion)
+                    for c in batch["cuts"]
                 ]
             elif test_set == "ravdess_gender":
                 gt_labels = [
                     map_ravdess_gender_label_to_index(c.supervisions[0].gender)
-                    for c in batch["supervisions"]["cut"]
+                    for c in batch["cuts"]
                 ]
             elif test_set == "cremad_emotion":
                 gt_labels = [
-                    map_cremad_emotion_label_to_index(
-                        c.supervisions[0].custom["emotion"]
-                    )
-                    for c in batch["supervisions"]["cut"]
+                    map_cremad_emotion_label_to_index(c.supervisions[0].emotion)
+                    for c in batch["cuts"]
                 ]
             elif test_set == "cremad_age":
                 gt_labels = [
-                    map_cremad_age_label_to_index(c.supervisions[0].custom["age"])
-                    for c in batch["supervisions"]["cut"]
+                    map_cremad_age_label_to_index(c.supervisions[0].age)
+                    for c in batch["cuts"]
                 ]
             else:
                 raise NotImplementedError(f"Unknown test set: {test_set}")
 
-            audio_features, _, _ = model(
-                audio=feature,
-                audio_lens=feature_lens,
-                freeze_audio_encoder=True,
-                freeze_text_encoder=True,
-            )
+            audio_features = model.encode_audio(audio, audio_lens)
 
             eval_info["all_audio_features"].append(audio_features.cpu())
             eval_info["all_gt_labels"].extend(gt_labels)
@@ -297,10 +231,13 @@ def evaluate(
             if batch_idx % 100 == 0:
                 logging.info(f"Validation batch {batch_idx}")
 
+        all_audio_features = torch.cat(eval_info["all_audio_features"])
+        all_text_features = text_features.cpu()
+        all_gt_labels = torch.tensor(eval_info["all_gt_labels"], dtype=torch.int64)
         metrics_single_dataset = compute_metrics(
-            audio_features=torch.cat(eval_info["all_audio_features"]),
-            text_features=text_features.cpu(),
-            gt_labels=torch.tensor(eval_info["all_gt_labels"], dtype=torch.int64),
+            audio_features=all_audio_features,
+            text_features=all_text_features,
+            gt_labels=all_gt_labels,
             test_set=test_set,
         )
         metrics.update(metrics_single_dataset)
@@ -354,15 +291,7 @@ def main():
 
     params.res_dir = params.exp_dir / "zero-shot-classification"
 
-    if params.iter > 0:
-        params.suffix = f"iter-{params.iter}-avg-{params.avg}"
-    else:
-        params.suffix = f"epoch-{params.epoch}-avg-{params.avg}"
-
-    if params.use_averaged_model:
-        params.suffix += "-use-averaged-model"
-
-    setup_logger(f"{params.res_dir}/log-decode-{params.suffix}")
+    setup_logger(f"{params.res_dir}/log-decode")
     logging.info("Decoding started")
 
     device = torch.device("cpu")
@@ -372,94 +301,9 @@ def main():
     logging.info(f"Device: {device}")
     logging.info(params)
 
-    tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
-
     logging.info("About to create model")
-    model = get_model(params)
-
-    if not params.use_averaged_model:
-        if params.iter > 0:
-            filenames = find_checkpoints(params.exp_dir, iteration=-params.iter)[
-                : params.avg
-            ]
-            if len(filenames) == 0:
-                raise ValueError(
-                    f"No checkpoints found for"
-                    f" --iter {params.iter}, --avg {params.avg}"
-                )
-            elif len(filenames) < params.avg:
-                raise ValueError(
-                    f"Not enough checkpoints ({len(filenames)}) found for"
-                    f" --iter {params.iter}, --avg {params.avg}"
-                )
-            logging.info(f"averaging {filenames}")
-            model.to(device)
-            model.load_state_dict(average_checkpoints(filenames, device=device))
-        elif params.avg == 1:
-            load_checkpoint(f"{params.exp_dir}/epoch-{params.epoch}.pt", model)
-        else:
-            start = params.epoch - params.avg + 1
-            filenames = []
-            for i in range(start, params.epoch + 1):
-                if i >= 1:
-                    filenames.append(f"{params.exp_dir}/epoch-{i}.pt")
-            logging.info(f"averaging {filenames}")
-            model.to(device)
-            model.load_state_dict(average_checkpoints(filenames, device=device))
-    else:
-        if params.iter > 0:
-            filenames = find_checkpoints(params.exp_dir, iteration=-params.iter)[
-                : params.avg + 1
-            ]
-            if len(filenames) == 0:
-                raise ValueError(
-                    f"No checkpoints found for"
-                    f" --iter {params.iter}, --avg {params.avg}"
-                )
-            elif len(filenames) < params.avg + 1:
-                raise ValueError(
-                    f"Not enough checkpoints ({len(filenames)}) found for"
-                    f" --iter {params.iter}, --avg {params.avg}"
-                )
-            filename_start = filenames[-1]
-            filename_end = filenames[0]
-            logging.info(
-                "Calculating the averaged model over iteration checkpoints"
-                f" from {filename_start} (excluded) to {filename_end}"
-            )
-            model.to(device)
-            model.load_state_dict(
-                average_checkpoints_with_averaged_model(
-                    filename_start=filename_start,
-                    filename_end=filename_end,
-                    device=device,
-                )
-            )
-        else:
-            assert params.avg > 0, params.avg
-            start = params.epoch - params.avg
-            assert start >= 1, start
-            filename_start = f"{params.exp_dir}/epoch-{start}.pt"
-            filename_end = f"{params.exp_dir}/epoch-{params.epoch}.pt"
-            logging.info(
-                f"Calculating the averaged model over epoch range from "
-                f"{start} (excluded) to {params.epoch}"
-            )
-            model.to(device)
-            model.load_state_dict(
-                average_checkpoints_with_averaged_model(
-                    filename_start=filename_start,
-                    filename_end=filename_end,
-                    device=device,
-                )
-            )
-
-    # filename = params.exp_dir / f"epoch-{params.epoch}-avg-{params.avg}.pt"
-    # torch.save({"model": model.state_dict()}, filename)
-    # exit()
-
+    model = glap_inference()
     model.to(device)
-    model.eval()
 
     num_param = sum([p.numel() for p in model.parameters()])
     logging.info(f"Number of model parameters: {num_param}")
@@ -494,7 +338,7 @@ def main():
         result_dict = evaluate(
             params=params,
             model=model,
-            tokenizer=tokenizer,
+            device=device,
             test_set=test_set,
             test_dl=test_dl,
         )
