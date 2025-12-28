@@ -24,7 +24,7 @@ from typing import Any, Dict
 
 import torch
 from clap_datamodule import DataModule
-from glap_model import glap_inference
+from laion_clap import CLAP_Module
 
 from icefall.env import get_env_info
 from icefall.utils import AttributeDict, setup_logger
@@ -80,7 +80,7 @@ def evaluate(
     with torch.no_grad():
         for batch_idx, batch in enumerate(test_dl):
             audio = batch["audio"].to(device)
-            audio_lens = batch["audio_lens"].to(device)
+            # audio_lens = batch["audio_lens"].to(device)
 
             if caption_type == "short_captions":
                 captions = [c.supervisions[0].short_captions[0] for c in batch["cuts"]]
@@ -89,8 +89,8 @@ def evaluate(
             else:
                 raise ValueError
 
-            audio_features = model.encode_audio(audio, audio_lens)
-            text_features = model.encode_text(captions, device=device)
+            audio_features = model.get_audio_embedding_from_data(audio, use_tensor=True)
+            text_features = model.get_text_embedding(captions, use_tensor=True)
 
             num_samples += audio_features.shape[0]
 
@@ -151,7 +151,7 @@ def compute_metrics(
 
     N = audio_features.shape[0]
 
-    logits_per_audio = 100 * (audio_features @ text_features.t())
+    logits_per_audio = audio_features @ text_features.t()
     logits_per_text = logits_per_audio.t()
 
     metrics = {}
@@ -212,7 +212,8 @@ def main():
     logging.info(params)
 
     logging.info("About to create model")
-    model = glap_inference()
+    model = CLAP_Module(enable_fusion=False)
+    model.load_ckpt()
     model.to(device)
 
     num_param = sum([p.numel() for p in model.parameters()])
@@ -236,7 +237,7 @@ def main():
             model=model,
             device=device,
             test_dl=test_dl,
-            caption_type="short_captions",
+            caption_type="long_captions",
             return_details=True,
         )
         metrics = result_dict["metrics"]

@@ -5,20 +5,20 @@ export CUDA_VISIBLE_DEVICES=$1
 
 md=800
 
-exp_dir=glap/exp
+exp_dir=laion_clap/exp
 
 echo $exp_dir
 
-if true; then
-python glap/evaluate_retrieval.py \
+if false; then
+python laion_clap/evaluate_retrieval.py \
     --manifest-dir data/manifests \
     --on-the-fly-feats 1 \
     --exp-dir $exp_dir \
     --max-duration $md
 fi
 
-if false; then
-python glap/evaluate_zero_shot_classification.py \
+if true; then
+python laion_clap/evaluate_zero_shot_classification.py \
     --manifest-dir data/manifests \
     --on-the-fly-feats 1 \
     --exp-dir $exp_dir \
